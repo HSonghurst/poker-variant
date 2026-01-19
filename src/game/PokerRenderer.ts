@@ -228,33 +228,35 @@ export class PokerRenderer {
     ctx.fillStyle = UNIT_COLORS[card.type];
     ctx.fillText(card.name.toUpperCase(), x + this.CARD_WIDTH / 2, y + 18);
 
-    // Draw unit sprite in center
+    // Draw unit sprite in center (scaled up 1.4x)
     const spriteX = x + this.CARD_WIDTH / 2;
-    const spriteY = y + this.CARD_HEIGHT / 2 + 2;
+    const spriteY = y + this.CARD_HEIGHT / 2 + 8;
+    const scale = 1.4;
+
+    ctx.save();
+    ctx.translate(spriteX, spriteY);
+    ctx.scale(scale, scale);
 
     // Draw sprite based on unit type (using 'bottom' team for player-colored sprites)
     switch (card.type) {
       case 'knight':
-        SpriteRenderer.drawKnight(ctx, spriteX, spriteY, 'bottom', 0);
+        SpriteRenderer.drawKnight(ctx, 0, 0, 'bottom', 0);
         break;
       case 'swordsman':
-        SpriteRenderer.drawSwordsman(ctx, spriteX, spriteY, 'bottom', 0);
+        SpriteRenderer.drawSwordsman(ctx, 0, 0, 'bottom', 0);
         break;
       case 'archer':
-        SpriteRenderer.drawArcher(ctx, spriteX, spriteY, 'bottom', 0);
+        SpriteRenderer.drawArcher(ctx, 0, 0, 'bottom', 0);
         break;
       case 'mage':
-        SpriteRenderer.drawMage(ctx, spriteX, spriteY, 'bottom', 0);
+        SpriteRenderer.drawMage(ctx, 0, 0, 'bottom', 0);
         break;
       case 'healer':
-        SpriteRenderer.drawHealer(ctx, spriteX, spriteY, 'bottom', 0);
+        SpriteRenderer.drawHealer(ctx, 0, 0, 'bottom', 0);
         break;
     }
 
-    // Unit type label at bottom
-    ctx.font = '10px monospace';
-    ctx.fillStyle = '#888';
-    ctx.fillText(card.type.charAt(0).toUpperCase() + card.type.slice(1), x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT - 10);
+    ctx.restore();
   }
 
   private drawCardBack(x: number, y: number): void {
