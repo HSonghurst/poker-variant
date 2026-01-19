@@ -31,9 +31,11 @@ export class PokerRenderer {
   private sliderMin: number = 20;
   private sliderMax: number = 100;
 
-  // Layout constants (cards are 30% bigger)
-  private readonly CARD_WIDTH = 110;
-  private readonly CARD_HEIGHT = 156;
+  // Layout constants
+  // Unit cards (hole cards) - normal size
+  private readonly CARD_WIDTH = 85;
+  private readonly CARD_HEIGHT = 120;
+  // Modifier cards (community cards) - 30% bigger
   private readonly MOD_CARD_WIDTH = 124;
   private readonly MOD_CARD_HEIGHT = 169;
 
@@ -216,19 +218,19 @@ export class PokerRenderer {
     ctx.strokeStyle = UNIT_COLORS[card.type];
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 10);
+    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 8);
     ctx.fill();
     ctx.stroke();
 
     // Unit name at top
-    ctx.font = 'bold 13px monospace';
+    ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = UNIT_COLORS[card.type];
-    ctx.fillText(card.name.toUpperCase(), x + this.CARD_WIDTH / 2, y + 22);
+    ctx.fillText(card.name.toUpperCase(), x + this.CARD_WIDTH / 2, y + 18);
 
     // Draw unit sprite in center
     const spriteX = x + this.CARD_WIDTH / 2;
-    const spriteY = y + this.CARD_HEIGHT / 2 + 5;
+    const spriteY = y + this.CARD_HEIGHT / 2 + 2;
 
     // Draw sprite based on unit type (using 'bottom' team for player-colored sprites)
     switch (card.type) {
@@ -250,9 +252,9 @@ export class PokerRenderer {
     }
 
     // Unit type label at bottom
-    ctx.font = '11px monospace';
+    ctx.font = '10px monospace';
     ctx.fillStyle = '#888';
-    ctx.fillText(card.type.charAt(0).toUpperCase() + card.type.slice(1), x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT - 12);
+    ctx.fillText(card.type.charAt(0).toUpperCase() + card.type.slice(1), x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT - 10);
   }
 
   private drawCardBack(x: number, y: number): void {
@@ -267,15 +269,15 @@ export class PokerRenderer {
     ctx.strokeStyle = '#4a5568';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 10);
+    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 8);
     ctx.fill();
     ctx.stroke();
 
-    // Question mark (keep at reasonable size)
-    ctx.font = '48px monospace';
+    // Question mark
+    ctx.font = '40px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#4a5568';
-    ctx.fillText('?', x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT / 2 + 16);
+    ctx.fillText('?', x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT / 2 + 12);
   }
 
   private drawModifierCard(card: Card, x: number, y: number): void {
