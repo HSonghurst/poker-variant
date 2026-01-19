@@ -2,15 +2,7 @@ import type { PokerGameState } from './PokerGame';
 import type { UnitCard } from './UnitCardDeck';
 import type { Card } from './Card';
 import type { FighterType } from './types';
-
-// Unit icons for display
-const UNIT_ICONS: Record<FighterType, string> = {
-  knight: '\u{1F6E1}',
-  swordsman: '\u{2694}',
-  archer: '\u{1F3F9}',
-  mage: '\u{1FA84}',
-  healer: '\u{2695}'
-};
+import { SpriteRenderer } from './SpriteRenderer';
 
 const UNIT_COLORS: Record<FighterType, string> = {
   knight: '#f59e0b',
@@ -39,11 +31,11 @@ export class PokerRenderer {
   private sliderMin: number = 20;
   private sliderMax: number = 100;
 
-  // Layout constants
-  private readonly CARD_WIDTH = 85;
-  private readonly CARD_HEIGHT = 120;
-  private readonly MOD_CARD_WIDTH = 95;
-  private readonly MOD_CARD_HEIGHT = 130;
+  // Layout constants (cards are 30% bigger)
+  private readonly CARD_WIDTH = 110;
+  private readonly CARD_HEIGHT = 156;
+  private readonly MOD_CARD_WIDTH = 124;
+  private readonly MOD_CARD_HEIGHT = 169;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -224,20 +216,43 @@ export class PokerRenderer {
     ctx.strokeStyle = UNIT_COLORS[card.type];
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 8);
+    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 10);
     ctx.fill();
     ctx.stroke();
 
-    // Unit icon
-    ctx.font = '36px serif';
+    // Unit name at top
+    ctx.font = 'bold 13px monospace';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(UNIT_ICONS[card.type], x + this.CARD_WIDTH / 2, y + 55);
+    ctx.fillStyle = UNIT_COLORS[card.type];
+    ctx.fillText(card.name.toUpperCase(), x + this.CARD_WIDTH / 2, y + 22);
 
-    // Unit name
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(card.name, x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT - 18);
+    // Draw unit sprite in center
+    const spriteX = x + this.CARD_WIDTH / 2;
+    const spriteY = y + this.CARD_HEIGHT / 2 + 5;
+
+    // Draw sprite based on unit type (using 'bottom' team for player-colored sprites)
+    switch (card.type) {
+      case 'knight':
+        SpriteRenderer.drawKnight(ctx, spriteX, spriteY, 'bottom', 0);
+        break;
+      case 'swordsman':
+        SpriteRenderer.drawSwordsman(ctx, spriteX, spriteY, 'bottom', 0);
+        break;
+      case 'archer':
+        SpriteRenderer.drawArcher(ctx, spriteX, spriteY, 'bottom', 0);
+        break;
+      case 'mage':
+        SpriteRenderer.drawMage(ctx, spriteX, spriteY, 'bottom', 0);
+        break;
+      case 'healer':
+        SpriteRenderer.drawHealer(ctx, spriteX, spriteY, 'bottom', 0);
+        break;
+    }
+
+    // Unit type label at bottom
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#888';
+    ctx.fillText(card.type.charAt(0).toUpperCase() + card.type.slice(1), x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT - 12);
   }
 
   private drawCardBack(x: number, y: number): void {
@@ -252,15 +267,15 @@ export class PokerRenderer {
     ctx.strokeStyle = '#4a5568';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 8);
+    ctx.roundRect(x, y, this.CARD_WIDTH, this.CARD_HEIGHT, 10);
     ctx.fill();
     ctx.stroke();
 
-    // Question mark
-    ctx.font = '40px monospace';
+    // Question mark (keep at reasonable size)
+    ctx.font = '48px monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#4a5568';
-    ctx.fillText('?', x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT / 2 + 12);
+    ctx.fillText('?', x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT / 2 + 16);
   }
 
   private drawModifierCard(card: Card, x: number, y: number): void {
@@ -271,7 +286,7 @@ export class PokerRenderer {
     ctx.strokeStyle = card.rarityColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.roundRect(x, y, this.MOD_CARD_WIDTH, this.MOD_CARD_HEIGHT, 8);
+    ctx.roundRect(x, y, this.MOD_CARD_WIDTH, this.MOD_CARD_HEIGHT, 10);
     ctx.fill();
     ctx.stroke();
 
@@ -283,19 +298,19 @@ export class PokerRenderer {
       legendary: '#f59e0b'
     };
     ctx.fillStyle = rarityColors[card.rarity] || '#9ca3af';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(card.rarity[0].toUpperCase(), x + this.MOD_CARD_WIDTH / 2, y + 18);
-
-    // Card name
-    ctx.fillStyle = card.color;
     ctx.font = 'bold 11px monospace';
-    this.wrapText(card.name, x + this.MOD_CARD_WIDTH / 2, y + 42, this.MOD_CARD_WIDTH - 12, 14);
+    ctx.textAlign = 'center';
+    ctx.fillText(card.rarity[0].toUpperCase(), x + this.MOD_CARD_WIDTH / 2, y + 20);
 
-    // Description
+    // Card name (keep text readable, not scaled 30%)
+    ctx.fillStyle = card.color;
+    ctx.font = 'bold 12px monospace';
+    this.wrapText(card.name, x + this.MOD_CARD_WIDTH / 2, y + 50, this.MOD_CARD_WIDTH - 16, 15);
+
+    // Description (keep text readable)
     ctx.fillStyle = '#aaa';
-    ctx.font = '9px monospace';
-    this.wrapText(card.description, x + this.MOD_CARD_WIDTH / 2, y + 72, this.MOD_CARD_WIDTH - 12, 11);
+    ctx.font = '10px monospace';
+    this.wrapText(card.description, x + this.MOD_CARD_WIDTH / 2, y + 90, this.MOD_CARD_WIDTH - 16, 12);
   }
 
   private drawCardSlot(x: number, y: number): void {
@@ -306,7 +321,7 @@ export class PokerRenderer {
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.roundRect(x, y, this.MOD_CARD_WIDTH, this.MOD_CARD_HEIGHT, 8);
+    ctx.roundRect(x, y, this.MOD_CARD_WIDTH, this.MOD_CARD_HEIGHT, 10);
     ctx.fill();
     ctx.stroke();
     ctx.setLineDash([]);
