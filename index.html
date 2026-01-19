@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poker Variant - Battle Hold'em</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Result Display -->
+      <div id="result-display" class="overlay hidden">
+        <div class="overlay-content">
+          <h2 id="result-title">Result</h2>
+          <p id="result-message"></p>
+          <button id="continue-btn" class="game-btn primary">Continue</button>
+        </div>
+      </div>
+
+      <!-- Game Over Display -->
+      <div id="game-over-display" class="overlay hidden">
+        <div class="overlay-content">
+          <h1 id="game-over-title">Game Over</h1>
+          <p id="game-over-message"></p>
+          <button id="play-again-btn" class="game-btn primary">Play Again</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
