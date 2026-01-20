@@ -80,7 +80,7 @@ export class Arrow {
       this.isDead = true;
     }
 
-    if (this.x < -50 || this.x > 1000 || this.y < -50 || this.y > 700) {
+    if (this.x < -100 || this.x > 2000 || this.y < -100 || this.y > 1500) {
       this.isDead = true;
     }
   }
@@ -92,31 +92,31 @@ export class Arrow {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
 
-    // Smaller arrow shaft
+    // Arrow shaft
     ctx.strokeStyle = '#8B4513';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-6, 0);
-    ctx.lineTo(4, 0);
+    ctx.moveTo(-3, 0);
+    ctx.lineTo(2, 0);
     ctx.stroke();
 
-    // Smaller arrowhead
+    // Arrowhead
     ctx.fillStyle = '#4a4a4a';
     ctx.beginPath();
-    ctx.moveTo(6, 0);
-    ctx.lineTo(3, -2);
-    ctx.lineTo(3, 2);
+    ctx.moveTo(3, 0);
+    ctx.lineTo(1.5, -1);
+    ctx.lineTo(1.5, 1);
     ctx.closePath();
     ctx.fill();
 
-    // Smaller fletching
+    // Fletching
     ctx.strokeStyle = '#a0522d';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-6, 0);
-    ctx.lineTo(-8, -2);
-    ctx.moveTo(-6, 0);
-    ctx.lineTo(-8, 2);
+    ctx.moveTo(-3, 0);
+    ctx.lineTo(-4, -1);
+    ctx.moveTo(-3, 0);
+    ctx.lineTo(-4, 1);
     ctx.stroke();
 
     ctx.restore();

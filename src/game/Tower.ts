@@ -33,7 +33,7 @@ export class Tower {
   constructor(team: Team, canvasWidth: number, canvasHeight: number) {
     this.team = team;
     this.x = canvasWidth / 2;
-    this.y = team === 'top' ? 70 : canvasHeight - 70;
+    this.y = team === 'blue' ? 70 : canvasHeight - 70;
     this.maxHealth = 15000;
     this.health = 15000;
   }

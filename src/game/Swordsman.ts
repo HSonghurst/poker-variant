@@ -11,12 +11,12 @@ export class Swordsman extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 180;
-    this.maxHealth = 180;
-    this.baseSpeed = 0.8;
-    this.speed = 0.8;
-    this.baseDamage = 17;
-    this.damage = 17;
+    this.health = 360;
+    this.maxHealth = 360;
+    this.baseSpeed = 0.3825;
+    this.speed = 0.3825;
+    this.baseDamage = 21;
+    this.damage = 21;
     this.baseAttackRange = 11;
     this.attackRange = 11;
     this.baseAttackCooldown = 800;
@@ -24,7 +24,7 @@ export class Swordsman extends Fighter {
   }
 
   getColor(): string {
-    return this.team === 'top' ? '#3b82f6' : '#ef4444';
+    return this.team === 'blue' ? '#3b82f6' : '#ef4444';
   }
 
   getType(): FighterType {
@@ -94,7 +94,7 @@ export class Swordsman extends Fighter {
       ctx.stroke();
     }
 
-    SpriteRenderer.drawSwordsman(ctx, this.x, this.y, this.team, this.animationFrame);
+    SpriteRenderer.drawSwordsman(ctx, this.x, this.y, this.team, this.animationFrame, this.isFlashing());
     this.drawHealthBar(ctx);
   }
 }

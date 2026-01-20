@@ -4,7 +4,9 @@ import { PokerGame, type PokerGameState } from './game/PokerGame';
 import { PokerRenderer } from './game/PokerRenderer';
 import { BattleArena } from './game/BattleArena';
 import { AIOpponent } from './game/AIOpponent';
+import { GOD_CARDS } from './game/GodCardDeck';
 import type { PlayerPosition } from './game/types';
+import type { UnitCard } from './game/UnitCardDeck';
 
 // Initialize Vercel Analytics
 inject();
@@ -13,10 +15,10 @@ inject();
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
-// Set canvas size to fill window
+// Set canvas size - larger arena for bigger battles
 function resizeCanvas(): void {
-  canvas.width = Math.min(1200, window.innerWidth);
-  canvas.height = Math.min(800, window.innerHeight);
+  canvas.width = Math.min(1800, window.innerWidth);
+  canvas.height = Math.min(1200, window.innerHeight);
 }
 resizeCanvas();
 window.addEventListener('resize', () => {
@@ -106,6 +108,38 @@ function renderMenu(): void {
 
   // Store button bounds for click detection
   (canvas as any).menuButton = { x: btnX, y: btnY, width: btnWidth, height: btnHeight };
+
+  // Draw test battle button on the side
+  const testBtnWidth = 120;
+  const testBtnHeight = 40;
+  const testBtnX = width - testBtnWidth - 20;
+  const testBtnY = 20;
+
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.roundRect(testBtnX, testBtnY, testBtnWidth, testBtnHeight, 8);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('TEST BATTLE', testBtnX + testBtnWidth / 2, testBtnY + 26);
+
+  (canvas as any).testBattleButton = { x: testBtnX, y: testBtnY, width: testBtnWidth, height: testBtnHeight };
+
+  // Draw all swordsmen button below test battle
+  const swordBtnX = testBtnX;
+  const swordBtnY = testBtnY + testBtnHeight + 10;
+
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath();
+  ctx.roundRect(swordBtnX, swordBtnY, testBtnWidth, testBtnHeight, 8);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 12px monospace';
+  ctx.fillText('ALL SWORDSMEN', swordBtnX + testBtnWidth / 2, swordBtnY + 26);
+
+  (canvas as any).swordsmenButton = { x: swordBtnX, y: swordBtnY, width: testBtnWidth, height: testBtnHeight };
 }
 
 function handleStateChange(state: PokerGameState): void {
@@ -183,7 +217,9 @@ function enterPositioning(): void {
   battleArena.setupBattle({
     playerUnits: state.player.holeCards,
     opponentUnits: state.opponent.holeCards,
-    modifiers: state.communityCards
+    modifiers: state.communityCards,
+    playerGodCards: state.player.godCards,
+    opponentGodCards: state.opponent.godCards
   });
 
   // Enter positioning mode
@@ -192,9 +228,12 @@ function enterPositioning(): void {
 }
 
 function startBattle(): void {
-  if (!pokerGame || !battleArena) return;
+  if (!battleArena) return;
 
-  pokerGame.startBattle();
+  // Only call pokerGame.startBattle if we're in a real game (not test mode)
+  if (pokerGame) {
+    pokerGame.startBattle();
+  }
   battleArena.start();
   gameMode = 'battle';
 }
@@ -243,6 +282,126 @@ function startGame(): void {
   pokerGame?.startNewHand();
 }
 
+// Test battle - skip poker and go straight to battle with 6 teams
+function startTestBattle(): void {
+  const unitTypes: Array<'knight' | 'swordsman' | 'archer' | 'mage' | 'healer'> = ['knight', 'swordsman', 'archer', 'mage', 'healer'];
+  const unitColors: Record<string, string> = {
+    knight: '#f59e0b',
+    swordsman: '#ef4444',
+    archer: '#22c55e',
+    mage: '#a855f7',
+    healer: '#22d3ee'
+  };
+
+  const randomType = () => unitTypes[Math.floor(Math.random() * unitTypes.length)];
+  const createUnitCard = (id: number): UnitCard => {
+    const type = randomType();
+    return { id, type, name: type.charAt(0).toUpperCase() + type.slice(1), description: '', color: unitColors[type] };
+  };
+
+  // Random unit cards for all 6 teams (2 units each)
+  const playerUnits: UnitCard[] = [createUnitCard(1), createUnitCard(2)];      // bottom
+  const opponentUnits: UnitCard[] = [createUnitCard(3), createUnitCard(4)];    // top
+  const topRightUnits: UnitCard[] = [createUnitCard(5), createUnitCard(6)];    // topRight
+  const bottomRightUnits: UnitCard[] = [createUnitCard(7), createUnitCard(8)]; // bottomRight
+  const bottomLeftUnits: UnitCard[] = [createUnitCard(9), createUnitCard(10)]; // bottomLeft
+  const topLeftUnits: UnitCard[] = [createUnitCard(11), createUnitCard(12)];   // topLeft (was leftUnits)
+
+  // Give player some god cards
+  const shuffledGodCards = [...GOD_CARDS].sort(() => Math.random() - 0.5);
+  const playerGodCards = shuffledGodCards.slice(0, 3);
+
+  // Create battle arena
+  battleArena = new BattleArena(canvas, (winner) => {
+    console.log('Battle ended, winner:', winner);
+    // Start a new test battle (rematch)
+    startTestBattle();
+  });
+
+  battleArena.setupBattle({
+    playerUnits,
+    opponentUnits,
+    topRightUnits,
+    bottomRightUnits,
+    bottomLeftUnits,
+    leftUnits: topLeftUnits, // topLeft team
+    modifiers: [], // No modifiers for test
+    playerGodCards,
+    opponentGodCards: []
+  });
+
+  // Go straight to positioning
+  battleArena.startPositioning();
+  gameMode = 'positioning';
+}
+
+// All swordsmen battle - all 6 teams have only swordsmen
+function startSwordsmanBattle(): void {
+  const createSwordsmanCard = (id: number): UnitCard => {
+    return { id, type: 'swordsman', name: 'Swordsman', description: '', color: '#ef4444' };
+  };
+
+  // All swordsmen for all 6 teams (4 groups of 2 = 8 units each)
+  const playerUnits: UnitCard[] = [
+    createSwordsmanCard(1), createSwordsmanCard(2),
+    createSwordsmanCard(3), createSwordsmanCard(4),
+    createSwordsmanCard(5), createSwordsmanCard(6),
+    createSwordsmanCard(7), createSwordsmanCard(8)
+  ];
+  const opponentUnits: UnitCard[] = [
+    createSwordsmanCard(9), createSwordsmanCard(10),
+    createSwordsmanCard(11), createSwordsmanCard(12),
+    createSwordsmanCard(13), createSwordsmanCard(14),
+    createSwordsmanCard(15), createSwordsmanCard(16)
+  ];
+  const topRightUnits: UnitCard[] = [
+    createSwordsmanCard(17), createSwordsmanCard(18),
+    createSwordsmanCard(19), createSwordsmanCard(20),
+    createSwordsmanCard(21), createSwordsmanCard(22),
+    createSwordsmanCard(23), createSwordsmanCard(24)
+  ];
+  const bottomRightUnits: UnitCard[] = [
+    createSwordsmanCard(25), createSwordsmanCard(26),
+    createSwordsmanCard(27), createSwordsmanCard(28),
+    createSwordsmanCard(29), createSwordsmanCard(30),
+    createSwordsmanCard(31), createSwordsmanCard(32)
+  ];
+  const bottomLeftUnits: UnitCard[] = [
+    createSwordsmanCard(33), createSwordsmanCard(34),
+    createSwordsmanCard(35), createSwordsmanCard(36),
+    createSwordsmanCard(37), createSwordsmanCard(38),
+    createSwordsmanCard(39), createSwordsmanCard(40)
+  ];
+  const topLeftUnits: UnitCard[] = [
+    createSwordsmanCard(41), createSwordsmanCard(42),
+    createSwordsmanCard(43), createSwordsmanCard(44),
+    createSwordsmanCard(45), createSwordsmanCard(46),
+    createSwordsmanCard(47), createSwordsmanCard(48)
+  ];
+
+  // Create battle arena
+  battleArena = new BattleArena(canvas, (winner) => {
+    console.log('Battle ended, winner:', winner);
+    // Start a new swordsman battle (rematch)
+    startSwordsmanBattle();
+  });
+
+  battleArena.setupBattle({
+    playerUnits,
+    opponentUnits,
+    topRightUnits,
+    bottomRightUnits,
+    bottomLeftUnits,
+    leftUnits: topLeftUnits,
+    modifiers: [],
+    playerGodCards: [],
+    opponentGodCards: []
+  });
+
+  battleArena.startPositioning();
+  gameMode = 'positioning';
+}
+
 // Mouse position helper
 function getMousePos(e: MouseEvent): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
@@ -264,6 +423,18 @@ canvas.addEventListener('click', (e) => {
         pos.y >= btn.y && pos.y <= btn.y + btn.height) {
       startGame();
     }
+    // Check test battle button
+    const testBtn = (canvas as any).testBattleButton;
+    if (testBtn && pos.x >= testBtn.x && pos.x <= testBtn.x + testBtn.width &&
+        pos.y >= testBtn.y && pos.y <= testBtn.y + testBtn.height) {
+      startTestBattle();
+    }
+    // Check all swordsmen button
+    const swordBtn = (canvas as any).swordsmenButton;
+    if (swordBtn && pos.x >= swordBtn.x && pos.x <= swordBtn.x + swordBtn.width &&
+        pos.y >= swordBtn.y && pos.y <= swordBtn.y + swordBtn.height) {
+      startSwordsmanBattle();
+    }
     return;
   }
 
@@ -275,11 +446,25 @@ canvas.addEventListener('click', (e) => {
     return;
   }
 
-  if (gameMode === 'positioning' && battleArena && pokerGame) {
+  if (gameMode === 'positioning' && battleArena) {
     const btn = battleArena.getStartBattleButtonBounds();
     if (pos.x >= btn.x && pos.x <= btn.x + btn.width &&
         pos.y >= btn.y && pos.y <= btn.y + btn.height) {
       startBattle();
+    }
+  }
+
+  if (gameMode === 'battle' && battleArena) {
+    // Check if showing summary screen (battle ended)
+    if (battleArena.isShowingSummary()) {
+      battleArena.handleRematchClick(pos.x, pos.y);
+      return;
+    }
+    // Check if clicking on god cards UI first
+    const clickedGodCard = battleArena.handleGodCardClick(pos.x, pos.y);
+    // If not clicking on god card UI, handle as battlefield click for targeting
+    if (!clickedGodCard) {
+      battleArena.handleBattlefieldClick(pos.x, pos.y);
     }
   }
 });
@@ -288,8 +473,15 @@ canvas.addEventListener('click', (e) => {
 let isDraggingSlider = false;
 
 canvas.addEventListener('mousedown', (e) => {
+  const pos = getMousePos(e);
+
+  // Handle positioning mode dragging
+  if (gameMode === 'positioning' && battleArena) {
+    battleArena.handlePositioningMouseDown(pos.x, pos.y);
+    return;
+  }
+
   if (gameMode === 'poker' && pokerRenderer && pokerGame?.canRaise()) {
-    const pos = getMousePos(e);
     if (pokerRenderer.handleSliderDrag(pos.x, pos.y, true)) {
       isDraggingSlider = true;
       render();
@@ -298,18 +490,35 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
+  const pos = getMousePos(e);
+
+  // Handle positioning mode dragging
+  if (gameMode === 'positioning' && battleArena) {
+    battleArena.handlePositioningMouseMove(pos.x, pos.y);
+    return;
+  }
+
   if (isDraggingSlider && pokerRenderer && pokerGame?.canRaise()) {
-    const pos = getMousePos(e);
     pokerRenderer.handleSliderDrag(pos.x, pos.y, true);
     render();
   }
 });
 
 canvas.addEventListener('mouseup', () => {
+  // Handle positioning mode
+  if (gameMode === 'positioning' && battleArena) {
+    battleArena.handlePositioningMouseUp();
+  }
+
   isDraggingSlider = false;
 });
 
 canvas.addEventListener('mouseleave', () => {
+  // Handle positioning mode
+  if (gameMode === 'positioning' && battleArena) {
+    battleArena.handlePositioningMouseUp();
+  }
+
   isDraggingSlider = false;
 });
 

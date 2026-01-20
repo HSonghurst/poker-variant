@@ -1,5 +1,6 @@
 import type { PokerGameState } from './PokerGame';
 import type { UnitCard } from './UnitCardDeck';
+import type { GodCard } from './GodCardDeck';
 import type { Card } from './Card';
 import type { FighterType } from './types';
 import { SpriteRenderer } from './SpriteRenderer';
@@ -38,6 +39,9 @@ export class PokerRenderer {
   // Modifier cards (community cards) - 30% bigger
   private readonly MOD_CARD_WIDTH = 124;
   private readonly MOD_CARD_HEIGHT = 169;
+  // God cards - smaller
+  private readonly GOD_CARD_WIDTH = 60;
+  private readonly GOD_CARD_HEIGHT = 80;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -129,7 +133,14 @@ export class PokerRenderer {
 
     // Draw hole cards
     const showCards = state.round === 'showdown' || state.round === 'positioning' || state.round === 'battle' || state.round === 'hand_complete';
-    const cardStartX = width / 2 - (state.opponent.holeCards.length * (this.CARD_WIDTH + 10)) / 2;
+
+    // Calculate total cards width including god cards
+    const unitCardsWidth = state.opponent.holeCards.length * (this.CARD_WIDTH + 10);
+    const godCardsWidth = state.opponent.godCards.length * (this.GOD_CARD_WIDTH + 8);
+    const dividerWidth = state.opponent.godCards.length > 0 ? 20 : 0;
+    const totalWidth = unitCardsWidth + dividerWidth + godCardsWidth;
+
+    const cardStartX = width / 2 - totalWidth / 2;
 
     for (let i = 0; i < state.opponent.holeCards.length; i++) {
       const cardX = cardStartX + i * (this.CARD_WIDTH + 10);
@@ -137,6 +148,22 @@ export class PokerRenderer {
         this.drawUnitCard(state.opponent.holeCards[i], cardX, y);
       } else {
         this.drawCardBack(cardX, y);
+      }
+    }
+
+    // Draw god cards
+    if (state.opponent.godCards.length > 0) {
+      const godStartX = cardStartX + unitCardsWidth + dividerWidth;
+      const godY = y + (this.CARD_HEIGHT - this.GOD_CARD_HEIGHT) / 2; // Center vertically
+
+      for (let i = 0; i < state.opponent.godCards.length; i++) {
+        const godX = godStartX + i * (this.GOD_CARD_WIDTH + 8);
+        // Hide opponent's god cards until showdown
+        if (showCards) {
+          this.drawGodCard(state.opponent.godCards[i], godX, godY, false);
+        } else {
+          this.drawGodCardBack(godX, godY);
+        }
       }
     }
   }
@@ -201,12 +228,29 @@ export class PokerRenderer {
       this.ctx.fillText(`Bet: ${state.player.currentBet}`, width / 2 + 120, y - 20);
     }
 
-    // Draw hole cards
-    const cardStartX = width / 2 - (state.player.holeCards.length * (this.CARD_WIDTH + 10)) / 2;
+    // Calculate total cards width including god cards
+    const unitCardsWidth = state.player.holeCards.length * (this.CARD_WIDTH + 10);
+    const godCardsWidth = state.player.godCards.length * (this.GOD_CARD_WIDTH + 8);
+    const dividerWidth = state.player.godCards.length > 0 ? 20 : 0;
+    const totalWidth = unitCardsWidth + dividerWidth + godCardsWidth;
+
+    // Draw hole cards (unit cards)
+    const cardStartX = width / 2 - totalWidth / 2;
 
     for (let i = 0; i < state.player.holeCards.length; i++) {
       const cardX = cardStartX + i * (this.CARD_WIDTH + 10);
       this.drawUnitCard(state.player.holeCards[i], cardX, y);
+    }
+
+    // Draw god cards
+    if (state.player.godCards.length > 0) {
+      const godStartX = cardStartX + unitCardsWidth + dividerWidth;
+      const godY = y + (this.CARD_HEIGHT - this.GOD_CARD_HEIGHT) / 2; // Center vertically
+
+      for (let i = 0; i < state.player.godCards.length; i++) {
+        const godX = godStartX + i * (this.GOD_CARD_WIDTH + 8);
+        this.drawGodCard(state.player.godCards[i], godX, godY, false);
+      }
     }
   }
 
@@ -237,22 +281,22 @@ export class PokerRenderer {
     ctx.translate(spriteX, spriteY);
     ctx.scale(scale, scale);
 
-    // Draw sprite based on unit type (using 'bottom' team for player-colored sprites)
+    // Draw sprite based on unit type (using 'red' team for player-colored sprites)
     switch (card.type) {
       case 'knight':
-        SpriteRenderer.drawKnight(ctx, 0, 0, 'bottom', 0);
+        SpriteRenderer.drawKnight(ctx, 0, 0, 'red', 0);
         break;
       case 'swordsman':
-        SpriteRenderer.drawSwordsman(ctx, 0, 0, 'bottom', 0);
+        SpriteRenderer.drawSwordsman(ctx, 0, 0, 'red', 0);
         break;
       case 'archer':
-        SpriteRenderer.drawArcher(ctx, 0, 0, 'bottom', 0);
+        SpriteRenderer.drawArcher(ctx, 0, 0, 'red', 0);
         break;
       case 'mage':
-        SpriteRenderer.drawMage(ctx, 0, 0, 'bottom', 0);
+        SpriteRenderer.drawMage(ctx, 0, 0, 'red', 0);
         break;
       case 'healer':
-        SpriteRenderer.drawHealer(ctx, 0, 0, 'bottom', 0);
+        SpriteRenderer.drawHealer(ctx, 0, 0, 'red', 0);
         break;
     }
 
@@ -280,6 +324,53 @@ export class PokerRenderer {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#4a5568';
     ctx.fillText('?', x + this.CARD_WIDTH / 2, y + this.CARD_HEIGHT / 2 + 12);
+  }
+
+  private drawGodCard(card: GodCard, x: number, y: number, isSelected: boolean): void {
+    const ctx = this.ctx;
+
+    // Card background
+    ctx.fillStyle = '#2d2d44';
+    ctx.strokeStyle = isSelected ? '#ffd700' : card.color;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, this.GOD_CARD_WIDTH, this.GOD_CARD_HEIGHT, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Icon
+    ctx.font = '24px serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(card.icon, x + this.GOD_CARD_WIDTH / 2, y + 35);
+
+    // Name (first word only to fit)
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = card.color;
+    ctx.fillText(card.name.split(' ')[0], x + this.GOD_CARD_WIDTH / 2, y + this.GOD_CARD_HEIGHT - 8);
+  }
+
+  private drawGodCardBack(x: number, y: number): void {
+    const ctx = this.ctx;
+
+    // Card background
+    const gradient = ctx.createLinearGradient(x, y, x + this.GOD_CARD_WIDTH, y + this.GOD_CARD_HEIGHT);
+    gradient.addColorStop(0, '#4a3082');
+    gradient.addColorStop(1, '#2d1f52');
+
+    ctx.fillStyle = gradient;
+    ctx.strokeStyle = '#6b4fa0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, this.GOD_CARD_WIDTH, this.GOD_CARD_HEIGHT, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Mystery icon
+    ctx.font = '24px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#6b4fa0';
+    ctx.fillText('⚡', x + this.GOD_CARD_WIDTH / 2, y + this.GOD_CARD_HEIGHT / 2 + 8);
   }
 
   private drawModifierCard(card: Card, x: number, y: number): void {

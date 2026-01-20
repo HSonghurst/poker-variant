@@ -30,11 +30,11 @@ export class Wraith extends Fighter {
     this.isBoss = true;
 
     // Position at the tower location
-    this.y = team === 'top' ? 70 : canvasHeight - 70;
+    this.y = team === 'blue' ? 70 : canvasHeight - 70;
   }
 
   getColor(): string {
-    return this.team === 'top' ? '#4b0082' : '#8b0000';
+    return this.team === 'blue' ? '#4b0082' : '#8b0000';
   }
 
   getType(): FighterType {

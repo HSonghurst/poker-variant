@@ -6,12 +6,12 @@ import { DPSTracker } from './DPSTracker';
 import type { Team, FighterType } from './types';
 
 export class Healer extends Fighter {
-  private baseHealRange: number = 98; // Archer range (65) + 50%
-  private healRange: number = 98;
-  private baseHealAoe: number = 40; // Base AoE radius
-  private healAoe: number = 40;
-  private baseHealAmount: number = 15;
-  private healAmount: number = 15;
+  private baseHealRange: number = 50;
+  private healRange: number = 50;
+  private baseHealAoe: number = 8; // Base AoE radius
+  private healAoe: number = 8;
+  private baseHealAmount: number = 7;
+  private healAmount: number = 7;
   private healCooldown: number = 1000;
   private lastHealTime: number = 0;
   private healEffect: { x: number; y: number; frame: number }[] = [];
@@ -24,10 +24,10 @@ export class Healer extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 70;
-    this.maxHealth = 70;
-    this.baseSpeed = 0.65;
-    this.speed = 0.65;
+    this.health = 140;
+    this.maxHealth = 140;
+    this.baseSpeed = 0.4;
+    this.speed = 0.4;
     this.baseDamage = 2;
     this.damage = 2;
     this.baseAttackRange = 14;
@@ -37,7 +37,7 @@ export class Healer extends Fighter {
   }
 
   getColor(): string {
-    return this.team === 'top' ? '#22d3ee' : '#fb923c';
+    return this.team === 'blue' ? '#22d3ee' : '#fb923c';
   }
 
   getType(): FighterType {
@@ -57,12 +57,6 @@ export class Healer extends Fighter {
     // Decay AoE animation
     if (this.aoeAnimation > 0) {
       this.aoeAnimation--;
-    }
-
-    this.animationTimer += deltaTime;
-    if (this.animationTimer > 150) {
-      this.animationFrame = (this.animationFrame + 1) % 4;
-      this.animationTimer = 0;
     }
 
     // Update heal effects
@@ -88,9 +82,33 @@ export class Healer extends Fighter {
       this.tryHeal(allies);
     }
 
+    // Animation
+    this.animationTimer += deltaTime;
+    if (this.animationTimer > 150) {
+      this.animationFrame = (this.animationFrame + 1) % 4;
+      this.animationTimer = 0;
+    }
+
     // Healer behavior: Stay back with allies, don't chase enemies
     // Find ally that needs healing most
     const woundedAlly = this.findWoundedAlly(allies || []);
+
+    // Separation from other healers to prevent bunching
+    let sepX = 0, sepY = 0;
+    const healerSeparationRadius = 10;
+    if (allies) {
+      for (const ally of allies) {
+        if (ally === this || ally.isDead || ally.getType() !== 'healer') continue;
+        const ox = this.x - ally.x;
+        const oy = this.y - ally.y;
+        const dist = Math.sqrt(ox * ox + oy * oy);
+        if (dist < healerSeparationRadius && dist > 0.1) {
+          const strength = (healerSeparationRadius - dist) / healerSeparationRadius;
+          sepX += (ox / dist) * strength;
+          sepY += (oy / dist) * strength;
+        }
+      }
+    }
 
     if (woundedAlly) {
       // Move towards wounded ally if not in heal range
@@ -99,13 +117,21 @@ export class Healer extends Fighter {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (dist > this.healRange * 0.95) {
-        // Move towards wounded ally
-        this.x += (dx / dist) * this.speed;
-        this.y += (dy / dist) * this.speed;
+        // Move towards wounded ally with separation
+        let moveX = (dx / dist) + sepX * 2;
+        let moveY = (dy / dist) + sepY * 2;
+        const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
+        if (moveMag > 0) {
+          this.x += (moveX / moveMag) * this.speed;
+          this.y += (moveY / moveMag) * this.speed;
+        }
+      } else {
+        // In range but apply separation
+        this.x += sepX * this.speed * 0.5;
+        this.y += sepY * this.speed * 0.5;
       }
     } else if (allies && allies.length > 0) {
       // No wounded allies - stay near the group center but behind the front line
-      // Only consider non-healer allies (if only healers remain, advance towards enemies)
       const aliveNonHealerAllies = allies.filter(a => !a.isDead && a !== this && a.getType() !== 'healer');
       if (aliveNonHealerAllies.length > 0) {
         // Calculate average ally position
@@ -118,16 +144,26 @@ export class Healer extends Fighter {
         avgY /= aliveNonHealerAllies.length;
 
         // Stay slightly behind the group (towards our base)
-        const backOffset = this.team === 'top' ? -30 : 30;
+        const backOffset = this.team === 'blue' ? -30 : 30;
         const targetY = avgY + backOffset;
 
-        const dx = avgX - this.x;
-        const dy = targetY - this.y;
+        let dx = avgX - this.x;
+        let dy = targetY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist > 20) {
-          this.x += (dx / dist) * this.speed * 0.5;
-          this.y += (dy / dist) * this.speed * 0.5;
+          // Blend movement with separation
+          let moveX = (dx / dist) * 0.5 + sepX * 2;
+          let moveY = (dy / dist) * 0.5 + sepY * 2;
+          const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
+          if (moveMag > 0) {
+            this.x += (moveX / moveMag) * this.speed * 0.5;
+            this.y += (moveY / moveMag) * this.speed * 0.5;
+          }
+        } else {
+          // Close enough, just apply separation
+          this.x += sepX * this.speed * 0.5;
+          this.y += sepY * this.speed * 0.5;
         }
       } else {
         // No non-healer allies - move towards nearest enemy
@@ -219,6 +255,7 @@ export class Healer extends Fighter {
 
     for (const ally of allies) {
       if (ally === this || ally.isDead) continue;
+      if (ally.getType() === 'healer') continue; // Don't heal other healers
       if (ally.health >= ally.maxHealth) continue;
 
       const dx = ally.x - this.x;
@@ -239,6 +276,7 @@ export class Healer extends Fighter {
 
     for (const ally of allies) {
       if (ally.isDead) continue;
+      if (ally.getType() === 'healer') continue; // Don't heal other healers
       if (ally.health >= ally.maxHealth) continue;
 
       const dx = ally.x - healTarget.x;
@@ -271,6 +309,7 @@ export class Healer extends Fighter {
 
     for (const ally of allies) {
       if (ally.isDead) continue;
+      if (ally.getType() === 'healer') continue; // Don't heal other healers
 
       const dx = ally.x - this.x;
       const dy = ally.y - this.y;
@@ -307,7 +346,7 @@ export class Healer extends Fighter {
       if (healCenter) {
         const progress = (20 - this.aoeAnimation) / 20;
         const alpha = 0.4 * (1 - progress);
-        const healColor = this.team === 'top' ? `rgba(34, 255, 34, ${alpha})` : `rgba(34, 211, 238, ${alpha})`;
+        const healColor = this.team === 'blue' ? `rgba(34, 255, 34, ${alpha})` : `rgba(34, 211, 238, ${alpha})`;
 
         // Filled circle
         ctx.fillStyle = healColor;
@@ -316,7 +355,7 @@ export class Healer extends Fighter {
         ctx.fill();
 
         // Border
-        ctx.strokeStyle = this.team === 'top' ? `rgba(34, 255, 34, ${alpha * 2})` : `rgba(34, 211, 238, ${alpha * 2})`;
+        ctx.strokeStyle = this.team === 'blue' ? `rgba(34, 255, 34, ${alpha * 2})` : `rgba(34, 211, 238, ${alpha * 2})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(healCenter.x, healCenter.y, this.healAoe, 0, Math.PI * 2);
@@ -327,7 +366,7 @@ export class Healer extends Fighter {
     // Draw purify ability indicator when about to cast
     if (this.modifiers?.healerPurifyAbility && this.purifyCooldown < 1000 && this.purifyCooldown > 0) {
       const warningAlpha = (1000 - this.purifyCooldown) / 1000;
-      const healColor = this.team === 'top' ? `rgba(34, 255, 34, ${warningAlpha * 0.3})` : `rgba(34, 211, 238, ${warningAlpha * 0.3})`;
+      const healColor = this.team === 'blue' ? `rgba(34, 255, 34, ${warningAlpha * 0.3})` : `rgba(34, 211, 238, ${warningAlpha * 0.3})`;
       ctx.fillStyle = healColor;
       ctx.beginPath();
       ctx.arc(this.x, this.y, 60, 0, Math.PI * 2);
@@ -338,7 +377,7 @@ export class Healer extends Fighter {
     if (this.purifyAnimation > 0) {
       const progress = (40 - this.purifyAnimation) / 40;
       const radius = 60 * progress;
-      const healColor = this.team === 'top' ? `rgba(34, 255, 34, ${1 - progress})` : `rgba(34, 211, 238, ${1 - progress})`;
+      const healColor = this.team === 'blue' ? `rgba(34, 255, 34, ${1 - progress})` : `rgba(34, 211, 238, ${1 - progress})`;
       ctx.strokeStyle = healColor;
       ctx.lineWidth = 4;
       ctx.beginPath();
@@ -347,7 +386,7 @@ export class Healer extends Fighter {
 
       // Draw cross in center
       const crossAlpha = 1 - progress;
-      const crossColor = this.team === 'top' ? `rgba(34, 255, 34, ${crossAlpha})` : `rgba(34, 211, 238, ${crossAlpha})`;
+      const crossColor = this.team === 'blue' ? `rgba(34, 255, 34, ${crossAlpha})` : `rgba(34, 211, 238, ${crossAlpha})`;
       ctx.strokeStyle = crossColor;
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -364,7 +403,7 @@ export class Healer extends Fighter {
       const size = 10 + effect.frame;
 
       // Green heal effect for goblin (top), cyan for human (bottom)
-      const healColor = this.team === 'top' ? `rgba(34, 255, 34, ${alpha})` : `rgba(34, 211, 238, ${alpha})`;
+      const healColor = this.team === 'blue' ? `rgba(34, 255, 34, ${alpha})` : `rgba(34, 211, 238, ${alpha})`;
       ctx.strokeStyle = healColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -376,7 +415,7 @@ export class Healer extends Fighter {
     }
 
     // Draw pixel art sprite
-    SpriteRenderer.drawHealer(ctx, this.x, this.y, this.team, this.animationFrame);
+    SpriteRenderer.drawHealer(ctx, this.x, this.y, this.team, this.animationFrame, this.isFlashing());
 
     // Draw health bar
     this.drawHealthBar(ctx);

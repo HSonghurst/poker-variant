@@ -28,18 +28,18 @@ export class DamageNumber {
   draw(ctx: CanvasRenderingContext2D): void {
     if (this.isDead) return;
 
-    const alpha = 1 - (this.age / this.maxAge);
+    const alpha = 0.5 * (1 - (this.age / this.maxAge)); // 50% opacity, fading out
     const scale = 1 + (this.age / this.maxAge) * 0.3; // Grow slightly
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = `bold ${Math.round(10 * scale)}px Arial`;
+    ctx.font = `bold ${Math.round(7 * scale)}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     // Outline
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.strokeText(`${this.value}`, this.x, this.y);
 
     // Fill

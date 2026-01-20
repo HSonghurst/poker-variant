@@ -12,10 +12,10 @@ export class Knight extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 300;
-    this.maxHealth = 300;
-    this.baseSpeed = 0.35;
-    this.speed = 0.35;
+    this.health = 225;
+    this.maxHealth = 225;
+    this.baseSpeed = 0.268;
+    this.speed = 0.268;
     this.baseDamage = 15;
     this.damage = 15;
     this.baseAttackRange = 12;
@@ -27,7 +27,7 @@ export class Knight extends Fighter {
   }
 
   getColor(): string {
-    return this.team === 'top' ? '#1e40af' : '#991b1b';
+    return this.team === 'blue' ? '#1e40af' : '#991b1b';
   }
 
   getType(): FighterType {
@@ -112,7 +112,7 @@ export class Knight extends Fighter {
       }
     }
 
-    SpriteRenderer.drawKnight(ctx, this.x, this.y, this.team, this.animationFrame);
+    SpriteRenderer.drawKnight(ctx, this.x, this.y, this.team, this.animationFrame, this.isFlashing());
     this.drawHealthBar(ctx);
   }
 }

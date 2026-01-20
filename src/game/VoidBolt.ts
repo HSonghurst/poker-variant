@@ -7,33 +7,45 @@ export class VoidBolt {
   y: number;
   targetX: number;
   targetY: number;
-  speed: number = 6;
+  speed: number = 2;
   damage: number;
   team: Team;
-  target: Fighter;
+  target: Fighter | null;
   shooter: Fighter | null;
   isDead: boolean = false;
   angle: number;
-  impactRadius: number = 25;
+  impactRadius: number = 10;
   isImpacting: boolean = false;
   impactFrame: number = 0;
+  isGroundTargeted: boolean = false; // Artillery mode - doesn't track target
 
-  constructor(x: number, y: number, target: Fighter, damage: number, team: Team, shooter?: Fighter) {
+  constructor(x: number, y: number, target: Fighter | null, damage: number, team: Team, shooter?: Fighter, groundTargetX?: number, groundTargetY?: number) {
     this.x = x;
     this.y = y;
     this.target = target;
-    this.targetX = target.x;
-    this.targetY = target.y;
     this.damage = damage;
     this.team = team;
     this.shooter = shooter || null;
+
+    // Ground targeted mode (artillery)
+    if (groundTargetX !== undefined && groundTargetY !== undefined) {
+      this.targetX = groundTargetX;
+      this.targetY = groundTargetY;
+      this.isGroundTargeted = true;
+    } else if (target) {
+      this.targetX = target.x;
+      this.targetY = target.y;
+    } else {
+      this.targetX = x;
+      this.targetY = y;
+    }
 
     const dx = this.targetX - this.x;
     const dy = this.targetY - this.y;
     this.angle = Math.atan2(dy, dx);
   }
 
-  update(enemies: Fighter[]): void {
+  update(enemies: Fighter[], allies?: Fighter[]): void {
     if (this.isDead) return;
 
     if (this.isImpacting) {
@@ -44,7 +56,8 @@ export class VoidBolt {
       return;
     }
 
-    if (!this.target.isDead) {
+    // Only track target if not ground-targeted (artillery mode)
+    if (!this.isGroundTargeted && this.target && !this.target.isDead) {
       this.targetX = this.target.x;
       this.targetY = this.target.y;
       const dx = this.targetX - this.x;
@@ -60,15 +73,20 @@ export class VoidBolt {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance < 18) {
-      this.impact(enemies);
+      this.impact(enemies, allies);
     }
 
-    if (this.x < -50 || this.x > 1000 || this.y < -50 || this.y > 700) {
+    // Kill bolt if it goes way off screen (larger canvas bounds)
+    if (this.x < -100 || this.x > 2000 || this.y < -100 || this.y > 1500) {
       this.isDead = true;
     }
   }
 
-  private impact(enemies: Fighter[]): void {
+  private impact(enemies: Fighter[], allies?: Fighter[]): void {
+    // Center explosion on target position
+    this.x = this.targetX;
+    this.y = this.targetY;
+
     this.isImpacting = true;
     SoundManager.playExplosion();
     const modifiers = this.shooter?.modifiers;
@@ -96,7 +114,7 @@ export class VoidBolt {
 
         enemy.takeDamage(finalDamage, this.shooter || undefined, isCrit);
 
-        // Mages always apply void DoT on hit
+        // Mages always apply void DoT on hit (enemies only)
         const baseVoidDamage = 4;
         const voidMultiplier = modifiers?.voidDoTMultiplier || 1;
         enemy.statusEffects.void += baseVoidDamage * voidMultiplier;
@@ -106,6 +124,24 @@ export class VoidBolt {
           const lifestealPercent = modifiers.lifestealPercent - 1;
           const healAmount = finalDamage * lifestealPercent;
           this.shooter.health = Math.min(this.shooter.maxHealth, this.shooter.health + healAmount);
+        }
+      }
+    }
+
+    // Friendly fire - damage allies (including shooter) in splash radius
+    if (allies) {
+      for (const ally of allies) {
+        if (ally.isDead) continue;
+        const dx = ally.x - this.x;
+        const dy = ally.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist <= this.impactRadius) {
+          // Damage falls off with distance (min 75% at edge)
+          const damageMultiplier = 1 - (dist / this.impactRadius) * 0.25;
+          const finalDamage = Math.floor(this.damage * damageMultiplier);
+          ally.takeDamage(finalDamage, this.shooter || undefined, false);
+          // No void DoT on allies
         }
       }
     }

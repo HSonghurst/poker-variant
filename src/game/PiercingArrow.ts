@@ -53,7 +53,7 @@ export class PiercingArrow {
 
     // Die if traveled too far or out of bounds
     if (this.travelDistance > this.maxDistance ||
-        this.x < -50 || this.x > 1000 || this.y < -50 || this.y > 700) {
+        this.x < -100 || this.x > 2000 || this.y < -100 || this.y > 1500) {
       this.isDead = true;
     }
   }
@@ -102,32 +102,32 @@ export class PiercingArrow {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
 
-    // Longer, glowing arrow shaft for piercing arrow
+    // Glowing arrow shaft for piercing arrow
     ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 1.5;
     ctx.shadowColor = '#fbbf24';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 4;
     ctx.beginPath();
-    ctx.moveTo(-10, 0);
-    ctx.lineTo(6, 0);
+    ctx.moveTo(-5, 0);
+    ctx.lineTo(3, 0);
     ctx.stroke();
 
     // Glowing arrowhead
     ctx.fillStyle = '#fbbf24';
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.lineTo(5, -3);
-    ctx.lineTo(5, 3);
+    ctx.moveTo(5, 0);
+    ctx.lineTo(2.5, -1.5);
+    ctx.lineTo(2.5, 1.5);
     ctx.closePath();
     ctx.fill();
 
     // Trail effect
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-10, 0);
-    ctx.lineTo(-20, 0);
+    ctx.moveTo(-5, 0);
+    ctx.lineTo(-10, 0);
     ctx.stroke();
 
     ctx.restore();

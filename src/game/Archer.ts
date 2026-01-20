@@ -11,10 +11,10 @@ export class Archer extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 80;
-    this.maxHealth = 80;
-    this.baseSpeed = 0.5;
-    this.speed = 0.5;
+    this.health = 160;
+    this.maxHealth = 160;
+    this.baseSpeed = 0.191;
+    this.speed = 0.191;
     this.baseDamage = 22;
     this.damage = 22;
     this.baseAttackRange = 65;
@@ -24,7 +24,7 @@ export class Archer extends Fighter {
   }
 
   getColor(): string {
-    return this.team === 'top' ? '#60a5fa' : '#f87171';
+    return this.team === 'blue' ? '#60a5fa' : '#f87171';
   }
 
   getType(): FighterType {
@@ -54,13 +54,14 @@ export class Archer extends Fighter {
   }
 
   update(enemies: Fighter[], deltaTime: number, allies?: Fighter[]): void {
-    super.update(enemies, deltaTime, allies);
-
+    // Always update arrows even if archer is dead (so they can finish)
     for (const arrow of this.arrows) {
       arrow.update();
     }
-
     this.arrows = this.arrows.filter(arrow => !arrow.isDead);
+
+    // Use the base Fighter update which includes the slot system
+    super.update(enemies, deltaTime, allies);
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -71,7 +72,7 @@ export class Archer extends Fighter {
     if (this.isDead) return;
 
     this.drawStatusEffects(ctx);
-    SpriteRenderer.drawArcher(ctx, this.x, this.y, this.team, this.animationFrame);
+    SpriteRenderer.drawArcher(ctx, this.x, this.y, this.team, this.animationFrame, this.isFlashing());
     this.drawHealthBar(ctx);
   }
 }

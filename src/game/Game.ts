@@ -106,14 +106,14 @@ export class Game {
     this.running = true;
     this.lastTime = performance.now();
     // Create towers
-    this.topTower = new Tower('top', this.canvas.width, this.canvas.height);
-    this.bottomTower = new Tower('bottom', this.canvas.width, this.canvas.height);
+    this.topTower = new Tower('blue', this.canvas.width, this.canvas.height);
+    this.bottomTower = new Tower('red', this.canvas.width, this.canvas.height);
     // Create player for bottom team (player-controlled)
-    this.player = new Player('bottom', this.canvas.width, this.canvas.height);
+    this.player = new Player('red', this.canvas.width, this.canvas.height);
     this.player.setModifiers(this.bottomModifiers);
     // Each team starts with building selection
-    this.triggerSelection('top', 'building');
-    this.triggerSelection('bottom', 'building');
+    this.triggerSelection('blue', 'building');
+    this.triggerSelection('red', 'building');
     this.gameLoop();
   }
 
@@ -157,21 +157,21 @@ export class Game {
   }
 
   getTeamCount(team: Team): number {
-    const fighters = team === 'top' ? this.topTeam : this.bottomTeam;
+    const fighters = team === 'blue' ? this.topTeam : this.bottomTeam;
     return fighters.filter(f => !f.isDead).length;
   }
 
   getBuildingCount(team: Team): number {
-    const buildings = team === 'top' ? this.topBuildings : this.bottomBuildings;
+    const buildings = team === 'blue' ? this.topBuildings : this.bottomBuildings;
     return buildings.filter(b => b !== null).length;
   }
 
   getKills(team: Team): number {
-    return team === 'top' ? this.topKills : this.bottomKills;
+    return team === 'blue' ? this.topKills : this.bottomKills;
   }
 
   getModifiers(team: Team): TeamModifiers {
-    return team === 'top' ? this.topModifiers : this.bottomModifiers;
+    return team === 'blue' ? this.topModifiers : this.bottomModifiers;
   }
 
   isSelectingCard(): boolean {
@@ -185,7 +185,7 @@ export class Game {
   selectCard(card: Card): void {
     if (!this.selectingForTeam || this.selectionType !== 'card') return;
 
-    const modifiers = this.selectingForTeam === 'top' ? this.topModifiers : this.bottomModifiers;
+    const modifiers = this.selectingForTeam === 'blue' ? this.topModifiers : this.bottomModifiers;
     modifiers.applyCard(card);
 
     this.processNextSelection();
@@ -194,7 +194,7 @@ export class Game {
   selectBuilding(building: BuildingChoice): void {
     if (!this.selectingForTeam || this.selectionType !== 'building') return;
 
-    const buildings = this.selectingForTeam === 'top' ? this.topBuildings : this.bottomBuildings;
+    const buildings = this.selectingForTeam === 'blue' ? this.topBuildings : this.bottomBuildings;
     const emptySlot = buildings.findIndex(b => b === null);
 
     if (emptySlot !== -1) {
@@ -223,7 +223,7 @@ export class Game {
   }
 
   private createFighter(team: Team, type: FighterType, x: number): Fighter {
-    const modifiers = team === 'top' ? this.topModifiers : this.bottomModifiers;
+    const modifiers = team === 'blue' ? this.topModifiers : this.bottomModifiers;
     let fighter: Fighter;
 
     switch (type) {
@@ -271,7 +271,7 @@ export class Game {
     // Spawn enemy boss (ogre) at 3 minutes only
     const bossSpawnTimes = [180000]; // 3 min only
     if (this.bossSpawnCount < bossSpawnTimes.length && this.gameTime >= bossSpawnTimes[this.bossSpawnCount]) {
-      this.topBoss = new Boss('top', this.canvas.width / 2, this.canvas.height);
+      this.topBoss = new Boss('blue', this.canvas.width / 2, this.canvas.height);
       this.bossSpawnCount++;
       SoundManager.playExplosion();
     }
@@ -279,7 +279,7 @@ export class Game {
     // Spawn enemy wraith at 3 minutes only
     const wraithSpawnTimes = [180000]; // 3 min only
     if (this.wraithSpawnCount < wraithSpawnTimes.length && this.gameTime >= wraithSpawnTimes[this.wraithSpawnCount]) {
-      this.topWraith = new Wraith('top', this.canvas.width / 2, this.canvas.height);
+      this.topWraith = new Wraith('blue', this.canvas.width / 2, this.canvas.height);
       this.wraithSpawnCount++;
       SoundManager.playFireball();
     }
@@ -288,7 +288,7 @@ export class Game {
     if (this.topTower?.isDead) {
       this.running = false;
       SoundManager.playVictory();
-      this.onWinnerCallback('bottom');
+      this.onWinnerCallback('red');
       return;
     }
 
@@ -296,7 +296,7 @@ export class Game {
     if (this.bottomTower?.isDead) {
       this.running = false;
       SoundManager.playVictory();
-      this.onWinnerCallback('top');
+      this.onWinnerCallback('blue');
       return;
     }
 
@@ -304,13 +304,13 @@ export class Game {
     if (this.player?.isDead) {
       this.running = false;
       SoundManager.playVictory();
-      this.onWinnerCallback('top');
+      this.onWinnerCallback('blue');
       return;
     }
 
     // Spawn units up to building cap
-    this.spawnUnitsUpToCap('top', deltaTime);
-    this.spawnUnitsUpToCap('bottom', deltaTime);
+    this.spawnUnitsUpToCap('blue', deltaTime);
+    this.spawnUnitsUpToCap('red', deltaTime);
 
     // Update fighters - include enemy tower as a target
     const aliveTop = this.topTeam.filter(f => !f.isDead);
@@ -399,9 +399,9 @@ export class Game {
   }
 
   private spawnUnitsUpToCap(team: Team, deltaTime: number): void {
-    const buildings = team === 'top' ? this.topBuildings : this.bottomBuildings;
-    const fighters = team === 'top' ? this.topTeam : this.bottomTeam;
-    const respawnTimers = team === 'top' ? this.topRespawnTimers : this.bottomRespawnTimers;
+    const buildings = team === 'blue' ? this.topBuildings : this.bottomBuildings;
+    const fighters = team === 'blue' ? this.topTeam : this.bottomTeam;
+    const respawnTimers = team === 'blue' ? this.topRespawnTimers : this.bottomRespawnTimers;
 
     // Sum up caps by type (each building has its own cap value)
     const buildingCounts = new Map<FighterType, number>();
@@ -445,14 +445,14 @@ export class Game {
       if (fighter.isDead && !('processed' in fighter)) {
         (fighter as Fighter & { processed: boolean }).processed = true;
         this.bottomKills++;
-        this.spawnXPOrb(fighter, 'bottom');
+        this.spawnXPOrb(fighter, 'red');
       }
     }
     for (const fighter of this.bottomTeam) {
       if (fighter.isDead && !('processed' in fighter)) {
         (fighter as Fighter & { processed: boolean }).processed = true;
         this.topKills++;
-        this.spawnXPOrb(fighter, 'top');
+        this.spawnXPOrb(fighter, 'blue');
       }
     }
   }
@@ -469,13 +469,13 @@ export class Game {
 
   private collectXP(team: Team, amount: number): void {
     SoundManager.playXPCollect();
-    if (team === 'top') {
+    if (team === 'blue') {
       this.topXP += amount;
       const required = this.getXPRequired(this.topLevel);
       if (this.topXP >= required) {
         this.topXP = 0;
         this.topLevel++;
-        this.onLevelUp('top', this.topLevel);
+        this.onLevelUp('blue', this.topLevel);
       }
     } else {
       this.bottomXP += amount;
@@ -483,7 +483,7 @@ export class Game {
       if (this.bottomXP >= required) {
         this.bottomXP = 0;
         this.bottomLevel++;
-        this.onLevelUp('bottom', this.bottomLevel);
+        this.onLevelUp('red', this.bottomLevel);
       }
     }
   }
@@ -499,7 +499,7 @@ export class Game {
       this.triggerSelection(team, 'building');
     } else {
       // Levels 11+: increase building caps, cycling through buildings
-      const buildings = team === 'top' ? this.topBuildings : this.bottomBuildings;
+      const buildings = team === 'blue' ? this.topBuildings : this.bottomBuildings;
       const slotIndex = (level - 11) % 10; // Cycle through 10 slots
       const building = buildings[slotIndex];
       if (building && building.cap < 10) {
@@ -521,7 +521,7 @@ export class Game {
   private triggerSelection(team: Team, type: SelectionType): void {
     // Check if team has available slots for buildings
     if (type === 'building') {
-      const buildings = team === 'top' ? this.topBuildings : this.bottomBuildings;
+      const buildings = team === 'blue' ? this.topBuildings : this.bottomBuildings;
       if (buildings.every(b => b !== null)) return; // No slots available
     }
 
@@ -536,7 +536,7 @@ export class Game {
 
   private showSelection(team: Team, type: SelectionType): void {
     // In single player mode, auto-select for blue team (top)
-    if (this.singlePlayerMode && team === 'top') {
+    if (this.singlePlayerMode && team === 'blue') {
       if (type === 'card') {
         const cards = this.getRandomCards(3, team);
         const randomCard = cards[Math.floor(Math.random() * cards.length)];
@@ -546,7 +546,7 @@ export class Game {
         const emptySlot = this.topBuildings.findIndex(b => b === null);
         if (emptySlot !== -1 && emptySlot < ENEMY_BUILDING_ORDER.length) {
           this.topBuildings[emptySlot] = new Building(
-            'top',
+            'blue',
             emptySlot,
             ENEMY_BUILDING_ORDER[emptySlot],
             this.canvas.width,
@@ -568,9 +568,9 @@ export class Game {
   }
 
   private getRandomCards(count: number, team?: Team): Card[] {
-    const modifiers = team === 'top' ? this.topModifiers : this.bottomModifiers;
-    const buildings = team === 'top' ? this.topBuildings : this.bottomBuildings;
-    const level = team === 'top' ? this.topLevel : this.bottomLevel;
+    const modifiers = team === 'blue' ? this.topModifiers : this.bottomModifiers;
+    const buildings = team === 'blue' ? this.topBuildings : this.bottomBuildings;
+    const level = team === 'blue' ? this.topLevel : this.bottomLevel;
 
     // Get unique fighter types from buildings
     const ownedTypes = new Set<string>();
@@ -672,7 +672,7 @@ export class Game {
   }
 
   private getRandomBuildings(count: number, team: Team): BuildingChoice[] {
-    const buildings = team === 'top' ? this.topBuildings : this.bottomBuildings;
+    const buildings = team === 'blue' ? this.topBuildings : this.bottomBuildings;
     const hasAnyBuilding = buildings.some(b => b !== null);
 
     // Exclude healer if this is the first building (no units to heal yet)
@@ -745,8 +745,8 @@ export class Game {
     DamageNumberManager.draw(ctx);
 
     // Draw XP bars
-    this.drawXPBar('top');
-    this.drawXPBar('bottom');
+    this.drawXPBar('blue');
+    this.drawXPBar('red');
 
     // Draw game clock
     this.drawClock();
@@ -806,12 +806,12 @@ export class Game {
 
   private drawXPBar(team: Team): void {
     const ctx = this.ctx;
-    const xp = team === 'top' ? this.topXP : this.bottomXP;
-    const level = team === 'top' ? this.topLevel : this.bottomLevel;
-    const modifiers = team === 'top' ? this.topModifiers : this.bottomModifiers;
+    const xp = team === 'blue' ? this.topXP : this.bottomXP;
+    const level = team === 'blue' ? this.topLevel : this.bottomLevel;
+    const modifiers = team === 'blue' ? this.topModifiers : this.bottomModifiers;
     const buildingCount = this.getBuildingCount(team);
     const required = this.getXPRequired(level);
-    const y = team === 'top' ? 50 : this.canvas.height - 58;
+    const y = team === 'blue' ? 50 : this.canvas.height - 58;
     const barWidth = this.canvas.width - 40;
     const barHeight = 8;
 
@@ -821,7 +821,7 @@ export class Game {
 
     // XP progress
     const progress = xp / required;
-    ctx.fillStyle = team === 'top' ? '#4a90d9' : '#d94a4a';
+    ctx.fillStyle = team === 'blue' ? '#4a90d9' : '#d94a4a';
     ctx.fillRect(20, y, barWidth * progress, barHeight);
 
     // Border

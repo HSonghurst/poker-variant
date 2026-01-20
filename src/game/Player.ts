@@ -57,7 +57,7 @@ export class Player {
     this.team = team;
     this.x = canvasWidth / 2;
     // Position near the team's base
-    this.y = team === 'top' ? 100 : canvasHeight - 140;
+    this.y = team === 'blue' ? 100 : canvasHeight - 140;
   }
 
   // Methods for Fighter targeting compatibility
@@ -309,7 +309,7 @@ export class Player {
 
     if (this.isDead) return;
 
-    const color = this.team === 'top' ? '#4a90d9' : '#d94a4a';
+    const color = this.team === 'blue' ? '#4a90d9' : '#d94a4a';
 
     // Draw attract radius (subtle)
     ctx.strokeStyle = `${color}30`;

@@ -77,7 +77,7 @@ export class PlayerArrow {
       this.isDead = true;
     }
 
-    if (this.x < -50 || this.x > 1000 || this.y < -50 || this.y > 700) {
+    if (this.x < -100 || this.x > 2000 || this.y < -100 || this.y > 1500) {
       this.isDead = true;
     }
   }

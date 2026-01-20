@@ -18,7 +18,7 @@ export class Building {
     // Calculate position based on slot (10 slots spread across width)
     const slotWidth = canvasWidth / 10;
     this.x = slotWidth * slot + slotWidth / 2;
-    this.y = team === 'top' ? 25 : canvasHeight - 25;
+    this.y = team === 'blue' ? 25 : canvasHeight - 25;
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -43,7 +43,7 @@ export class Building {
     ctx.fillRect(this.x - this.width / 2, this.y - this.height / 2, this.width, this.height);
 
     // Border
-    ctx.strokeStyle = this.team === 'top' ? '#4a90d9' : '#d94a4a';
+    ctx.strokeStyle = this.team === 'blue' ? '#4a90d9' : '#d94a4a';
     ctx.lineWidth = 3;
     ctx.strokeRect(this.x - this.width / 2, this.y - this.height / 2, this.width, this.height);
 

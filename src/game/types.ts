@@ -1,5 +1,16 @@
-export type Team = 'top' | 'bottom';
+// 6 teams positioned around a hexagon
+export type Team = 'blue' | 'purple' | 'pink' | 'red' | 'orange' | 'green';
 export type FighterType = 'swordsman' | 'archer' | 'mage' | 'knight' | 'healer';
+
+// Team colors for rendering
+export const TEAM_COLORS: Record<Team, string> = {
+  blue: '#2563eb',
+  purple: '#7c3aed',
+  pink: '#db2777',
+  red: '#dc2626',
+  orange: '#ea580c',
+  green: '#16a34a'
+};
 
 export interface Position {
   x: number;

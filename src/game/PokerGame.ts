@@ -2,12 +2,14 @@ import type { BettingRound, PlayerAction, PlayerPosition } from './types';
 import type { Card } from './Card';
 import { ALL_CARDS } from './Card';
 import { UnitCardDeck, type UnitCard } from './UnitCardDeck';
+import { GodCardDeck, type GodCard } from './GodCardDeck';
 
 export interface Player {
   position: PlayerPosition;
   chips: number;
   currentBet: number;
   holeCards: UnitCard[];
+  godCards: GodCard[];
   hasFolded: boolean;
   isAllIn: boolean;
   hasActedThisRound: boolean;
@@ -36,12 +38,14 @@ export type StateChangeCallback = (state: PokerGameState) => void;
 export class PokerGame {
   private state: PokerGameState;
   private unitDeck: UnitCardDeck;
+  private godCardDeck: GodCardDeck;
   private modifierDeck: Card[];
   private onStateChange: StateChangeCallback;
 
   constructor(startingChips: number, onStateChange: StateChangeCallback) {
     this.onStateChange = onStateChange;
     this.unitDeck = new UnitCardDeck();
+    this.godCardDeck = new GodCardDeck();
     this.modifierDeck = [];
 
     this.state = {
@@ -56,6 +60,7 @@ export class PokerGame {
         chips: startingChips,
         currentBet: 0,
         holeCards: [],
+        godCards: [],
         hasFolded: false,
         isAllIn: false,
         hasActedThisRound: false
@@ -65,6 +70,7 @@ export class PokerGame {
         chips: startingChips,
         currentBet: 0,
         holeCards: [],
+        godCards: [],
         hasFolded: false,
         isAllIn: false,
         hasActedThisRound: false
@@ -112,12 +118,14 @@ export class PokerGame {
 
     // Reset players
     this.state.player.holeCards = [];
+    this.state.player.godCards = [];
     this.state.player.currentBet = 0;
     this.state.player.hasFolded = false;
     this.state.player.isAllIn = false;
     this.state.player.hasActedThisRound = false;
 
     this.state.opponent.holeCards = [];
+    this.state.opponent.godCards = [];
     this.state.opponent.currentBet = 0;
     this.state.opponent.hasFolded = false;
     this.state.opponent.isAllIn = false;
@@ -134,11 +142,16 @@ export class PokerGame {
 
     // Shuffle decks
     this.unitDeck.reset();
+    this.godCardDeck.reset();
     this.shuffleModifierDeck();
 
     // Deal hole cards (unit cards)
     this.state.player.holeCards = this.unitDeck.deal(2);
     this.state.opponent.holeCards = this.unitDeck.deal(2);
+
+    // Deal god cards (2 per player)
+    this.state.player.godCards = this.godCardDeck.deal(2);
+    this.state.opponent.godCards = this.godCardDeck.deal(2);
 
     // Post blinds - in heads up, dealer posts small blind, other posts big blind
     const sbPlayer = this.state.dealerPosition === 'player' ? this.state.player : this.state.opponent;

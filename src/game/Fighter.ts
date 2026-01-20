@@ -1,9 +1,10 @@
-import type { Team, Position, FighterType } from './types';
+import { TEAM_COLORS, type Team, type Position, type FighterType } from './types';
 import type { TeamModifiers } from './Card';
 import { DamageNumberManager } from './DamageNumber';
 import { SoundManager } from './SoundManager';
 import { DPSTracker } from './DPSTracker';
 import type { UnitType, DamageType } from './DPSTracker';
+import { SlotManager, AttackState, findEnemyInRange } from './AttackSlotSystem';
 
 export interface StatusEffects {
   burning: number;
@@ -29,13 +30,30 @@ export abstract class Fighter {
   baseAttackCooldown: number;
   attackCooldown: number;
   lastAttackTime: number = 0;
-  width: number = 7;
-  height: number = 9;
+  width: number = 4;
+  height: number = 5;
   isDead: boolean = false;
   isBoss: boolean = false;
   target: Fighter | null = null;
   modifiers: TeamModifiers | null = null;
   taunter: Fighter | null = null; // Used by Knight's taunt ability
+  lastAttackerTeam: Team | null = null; // Track who last damaged this unit
+  lastAttackerType: FighterType | null = null; // Track what type of unit last damaged this
+  damageFlashUntil: number = 0; // Timestamp when damage flash ends
+  focusedEnemyTeam: Team | null = null; // Team this unit's group is focusing on
+
+  // Group movement - units maintain positions relative to group center
+  groupMembers: Fighter[] = [];
+  groupOffsetX: number = 0; // Offset from group center
+  groupOffsetY: number = 0;
+
+  // Arena center for movement (set by BattleArena)
+  arenaCenterX: number = 600;
+  arenaCenterY: number = 400;
+
+  // Attack slot system state
+  attackState: AttackState = AttackState.IDLE;
+  private waitingStartTime: number = 0;
 
   statusEffects: StatusEffects = {
     burning: 0,
@@ -54,7 +72,8 @@ export abstract class Fighter {
   constructor(team: Team, x: number, canvasHeight: number) {
     this.team = team;
     this.x = x;
-    this.y = team === 'top' ? 50 : canvasHeight - 90;
+    // Default Y position (will be overridden in BattleArena)
+    this.y = canvasHeight / 2;
     this.health = 100;
     this.maxHealth = 100;
     this.baseSpeed = 1;
@@ -92,8 +111,20 @@ export abstract class Fighter {
     this.attackCooldown = this.baseAttackCooldown / modifiers.attackSpeedMultiplier;
   }
 
-  update(enemies: Fighter[], deltaTime: number, _allies?: Fighter[]): void {
-    if (this.isDead) return;
+  // Store nearby units for pathfinding
+  private nearbyAllies: Fighter[] = [];
+  private nearbyEnemies: Fighter[] = [];
+
+  update(enemies: Fighter[], deltaTime: number, allies?: Fighter[]): void {
+    if (this.isDead) {
+      // Release any slot we had when we die
+      SlotManager.releaseSlot(this);
+      return;
+    }
+
+    // Store references for pathfinding
+    this.nearbyEnemies = enemies;
+    this.nearbyAllies = allies || [];
 
     // Process status effects
     this.processStatusEffects(deltaTime);
@@ -118,16 +149,76 @@ export abstract class Fighter {
 
     this.findTarget(enemies);
 
-    if (this.target && !this.target.isDead) {
-      const distance = this.getDistanceTo(this.target);
+    // No target - idle state, move forward
+    if (!this.target || this.target.isDead) {
+      this.attackState = AttackState.IDLE;
+      SlotManager.releaseSlot(this);
+      this.moveForward();
+      return;
+    }
 
-      if (distance > this.attackRange) {
-        this.moveTowards(this.target);
-      } else {
+    // We have a target - use slot-based positioning
+    // Slots are pre-assigned by greedy FCFS algorithm in BattleArena
+    // (closest units to target pick their closest slot first)
+    let assignment = SlotManager.getAssignment(this);
+
+    // Check if assignment is for wrong target (target changed)
+    if (assignment && assignment.targetFighter !== this.target) {
+      SlotManager.releaseSlot(this);
+      assignment = null;
+    }
+
+    if (assignment) {
+      // We have a valid slot assignment
+      const slotDist = Math.sqrt(
+        Math.pow(assignment.slot.x - this.x, 2) +
+        Math.pow(assignment.slot.y - this.y, 2)
+      );
+
+      const distToTarget = this.getDistanceTo(this.target);
+
+      if (distToTarget <= this.attackRange) {
+        // Close enough to attack
+        this.attackState = AttackState.ATTACKING;
+        SlotManager.occupySlot(this);
         this.attack(this.target, enemies);
+        this.applySeparation();
+      } else if (slotDist > 3) {
+        // Need to move to our slot
+        this.attackState = AttackState.MOVING_TO_SLOT;
+        this.moveToSlot(assignment.slot);
+      } else {
+        // At slot but not in attack range (target moved) - update slots and follow
+        SlotManager.updateSlotPositions(this.target, this.attackRange);
+        this.attackState = AttackState.MOVING_TO_SLOT;
+        this.moveToSlot(assignment.slot);
       }
     } else {
-      this.moveForward();
+      // No slot available - try opportunistic attack or wait
+      const opportunisticTarget = findEnemyInRange(this, enemies);
+
+      if (opportunisticTarget) {
+        // Attack any enemy in range
+        this.attackState = AttackState.OPPORTUNISTIC;
+        this.attack(opportunisticTarget, enemies);
+        this.applySeparation();
+      } else {
+        // No enemies in range, wait then move
+        const wasWaiting = this.attackState === AttackState.WAITING;
+        this.attackState = AttackState.WAITING;
+
+        if (!wasWaiting) {
+          // Just started waiting - record the time
+          this.waitingStartTime = Date.now();
+        }
+
+        const waitDuration = Date.now() - this.waitingStartTime;
+        if (waitDuration >= 2000) {
+          // Waited long enough, move towards the fight
+          this.moveForward();
+        }
+        // Otherwise stay in place
+      }
     }
   }
 
@@ -192,18 +283,93 @@ export abstract class Fighter {
       return;
     }
 
-    let closest = aliveEnemies[0];
-    let closestDist = this.getDistanceTo(closest);
+    // Aggro range - only target enemies within this distance
+    const aggroRange = 121;
+    // Very close range - always allow targeting regardless of focused team (150% of attack range)
+    const closeRange = this.attackRange * 1.5;
+
+    // Group enemies by team and calculate average distance to each team
+    const teamDistances = new Map<Team, { totalDist: number; count: number; enemies: Fighter[] }>();
 
     for (const enemy of aliveEnemies) {
       const dist = this.getDistanceTo(enemy);
+      if (dist <= aggroRange) {
+        if (!teamDistances.has(enemy.team)) {
+          teamDistances.set(enemy.team, { totalDist: 0, count: 0, enemies: [] });
+        }
+        const teamData = teamDistances.get(enemy.team)!;
+        teamData.totalDist += dist;
+        teamData.count++;
+        teamData.enemies.push(enemy);
+      }
+    }
+
+    if (teamDistances.size === 0) {
+      this.target = null;
+      return;
+    }
+
+    // Count how many allies are focusing on each team
+    const allyFocusCounts = new Map<Team, number>();
+    for (const ally of this.nearbyAllies) {
+      if (ally.isDead || ally === this) continue;
+      if (ally.focusedEnemyTeam) {
+        allyFocusCounts.set(
+          ally.focusedEnemyTeam,
+          (allyFocusCounts.get(ally.focusedEnemyTeam) || 0) + 1
+        );
+      }
+    }
+
+    // Find the closest team (by average distance), with bias toward teams allies are targeting
+    // Each ally targeting a team reduces its "effective distance" by 15
+    const ALLY_FOCUS_BIAS = 15;
+    let closestTeam: Team | null = null;
+    let closestTeamScore = Infinity;
+
+    for (const [team, data] of teamDistances) {
+      const avgDist = data.totalDist / data.count;
+      const allyBonus = (allyFocusCounts.get(team) || 0) * ALLY_FOCUS_BIAS;
+      const effectiveScore = avgDist - allyBonus;
+      if (effectiveScore < closestTeamScore) {
+        closestTeamScore = effectiveScore;
+        closestTeam = team;
+      }
+    }
+
+    this.focusedEnemyTeam = closestTeam;
+
+    // Find target: prefer focused team, but allow very close enemies from any team
+    let closest: Fighter | null = null;
+    let closestDist = Infinity;
+    let closestFromFocusedTeam: Fighter | null = null;
+    let closestDistFromFocusedTeam = Infinity;
+
+    for (const enemy of aliveEnemies) {
+      const dist = this.getDistanceTo(enemy);
+      if (dist > aggroRange) continue;
+
+      // Track closest enemy from focused team
+      if (enemy.team === this.focusedEnemyTeam && dist < closestDistFromFocusedTeam) {
+        closestFromFocusedTeam = enemy;
+        closestDistFromFocusedTeam = dist;
+      }
+
+      // Track closest enemy overall (for very close range override)
       if (dist < closestDist) {
         closest = enemy;
         closestDist = dist;
       }
     }
 
-    this.target = closest;
+    // Use closest enemy if very close, otherwise prefer focused team target
+    if (closest && closestDist <= closeRange) {
+      this.target = closest;
+    } else if (closestFromFocusedTeam) {
+      this.target = closestFromFocusedTeam;
+    } else {
+      this.target = closest;
+    }
   }
 
   protected getDistanceTo(other: Fighter): number {
@@ -223,11 +389,359 @@ export abstract class Fighter {
     }
   }
 
+  // Get the center position of this unit's group
+  protected getGroupCenter(): { x: number; y: number } {
+    if (this.groupMembers.length === 0) {
+      return { x: this.x, y: this.y };
+    }
+
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+
+    for (const member of this.groupMembers) {
+      if (!member.isDead) {
+        sumX += member.x;
+        sumY += member.y;
+        count++;
+      }
+    }
+
+    if (count === 0) return { x: this.x, y: this.y };
+    return { x: sumX / count, y: sumY / count };
+  }
+
+  // No-op - separation removed, relying on slot system for positioning
+  protected applySeparation(): void {
+    // Just clamp to arena bounds
+    const maxDist = 540;
+    const dx = this.x - this.arenaCenterX;
+    const dy = this.y - this.arenaCenterY;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > maxDist) {
+      this.x = this.arenaCenterX + (dx / d) * maxDist;
+      this.y = this.arenaCenterY + (dy / d) * maxDist;
+    }
+  }
+
+  // Move to a firing position around the target, spread out based on groupOffset
+  protected moveTowardsFiringPosition(target: Fighter): void {
+    // Direction from target to this unit (our approach angle)
+    const fromTargetX = this.x - target.x;
+    const fromTargetY = this.y - target.y;
+    const fromTargetDist = Math.sqrt(fromTargetX * fromTargetX + fromTargetY * fromTargetY);
+
+    if (fromTargetDist === 0) return;
+
+    // Normalize approach direction
+    const approachX = fromTargetX / fromTargetDist;
+    const approachY = fromTargetY / fromTargetDist;
+
+    // Perpendicular direction for spreading out
+    const perpX = -approachY;
+    const perpY = approachX;
+
+    // Calculate firing position: at attack range, offset by groupOffsetX to spread out
+    const firingDist = this.attackRange * 0.85; // Stay slightly inside attack range
+    const spreadOffset = this.groupOffsetX * 1.5; // Spread based on formation position
+
+    const firingPosX = target.x + approachX * firingDist + perpX * spreadOffset;
+    const firingPosY = target.y + approachY * firingDist + perpY * spreadOffset;
+
+    // Now path to the firing position with obstacle avoidance
+    const toFiringX = firingPosX - this.x;
+    const toFiringY = firingPosY - this.y;
+    const toFiringDist = Math.sqrt(toFiringX * toFiringX + toFiringY * toFiringY);
+
+    if (toFiringDist < 2) {
+      // Close enough to firing position, just apply separation
+      this.applySeparation();
+      return;
+    }
+
+    // Desired direction to firing position
+    const desiredX = toFiringX / toFiringDist;
+    const desiredY = toFiringY / toFiringDist;
+
+    // Predictive obstacle avoidance
+    const lookAhead = 25;
+    const avoidRadius = 12;
+    let avoidX = 0;
+    let avoidY = 0;
+
+    const allUnits = [...this.nearbyAllies, ...this.nearbyEnemies];
+
+    for (const other of allUnits) {
+      if (other === this || other.isDead || other === target) continue;
+
+      const toOtherX = other.x - this.x;
+      const toOtherY = other.y - this.y;
+      const toOtherDist = Math.sqrt(toOtherX * toOtherX + toOtherY * toOtherY);
+
+      if (toOtherDist > lookAhead || toOtherDist < 0.1) continue;
+
+      const dotAhead = toOtherX * desiredX + toOtherY * desiredY;
+      if (dotAhead < 0) continue;
+
+      const perpDist = Math.abs(toOtherX * (-desiredY) + toOtherY * desiredX);
+
+      if (perpDist < avoidRadius) {
+        const perpAvoidX = -desiredY;
+        const perpAvoidY = desiredX;
+        const side = toOtherX * perpAvoidX + toOtherY * perpAvoidY;
+        const strength = (1 - toOtherDist / lookAhead) * (1 - perpDist / avoidRadius);
+
+        if (side > 0) {
+          avoidX -= perpAvoidX * strength;
+          avoidY -= perpAvoidY * strength;
+        } else {
+          avoidX += perpAvoidX * strength;
+          avoidY += perpAvoidY * strength;
+        }
+      }
+    }
+
+    let moveX = desiredX * 0.7 + avoidX * 1.2;
+    let moveY = desiredY * 0.7 + avoidY * 1.2;
+
+    // Boundary avoidance
+    const boundaryRadius = 500;
+    const bx = this.x - this.arenaCenterX;
+    const by = this.y - this.arenaCenterY;
+    const distFromCenter = Math.sqrt(bx * bx + by * by);
+
+    if (distFromCenter > boundaryRadius && distFromCenter > 0) {
+      const overshoot = distFromCenter - boundaryRadius;
+      const force = Math.min(overshoot / 50, 3);
+      moveX += (-bx / distFromCenter) * force;
+      moveY += (-by / distFromCenter) * force;
+    }
+
+    // Normalize and move
+    const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
+    if (moveMag > 0) {
+      this.x += (moveX / moveMag) * this.speed;
+      this.y += (moveY / moveMag) * this.speed;
+    }
+
+    // Hard clamp
+    const maxDist = 540;
+    const clampDx = this.x - this.arenaCenterX;
+    const clampDy = this.y - this.arenaCenterY;
+    const clampD = Math.sqrt(clampDx * clampDx + clampDy * clampDy);
+    if (clampD > maxDist) {
+      this.x = this.arenaCenterX + (clampDx / clampD) * maxDist;
+      this.y = this.arenaCenterY + (clampDy / clampD) * maxDist;
+    }
+  }
+
+  // Move to an attack slot position with obstacle avoidance
+  protected moveToSlot(slot: { x: number; y: number }): void {
+    this.moveToPosition(slot.x, slot.y);
+  }
+
+  // Move to a specific position with obstacle avoidance
+  protected moveToPosition(targetX: number, targetY: number): void {
+    const toTargetX = targetX - this.x;
+    const toTargetY = targetY - this.y;
+    const toTargetDist = Math.sqrt(toTargetX * toTargetX + toTargetY * toTargetY);
+
+    if (toTargetDist < 2) {
+      // Close enough, just apply separation
+      this.applySeparation();
+      return;
+    }
+
+    // Desired direction
+    const desiredX = toTargetX / toTargetDist;
+    const desiredY = toTargetY / toTargetDist;
+
+    // Predictive obstacle avoidance
+    const lookAhead = 25;
+    const avoidRadius = 12;
+    let avoidX = 0;
+    let avoidY = 0;
+
+    const allUnits = [...this.nearbyAllies, ...this.nearbyEnemies];
+
+    for (const other of allUnits) {
+      if (other === this || other.isDead) continue;
+
+      const toOtherX = other.x - this.x;
+      const toOtherY = other.y - this.y;
+      const toOtherDist = Math.sqrt(toOtherX * toOtherX + toOtherY * toOtherY);
+
+      if (toOtherDist > lookAhead || toOtherDist < 0.1) continue;
+
+      const dotAhead = toOtherX * desiredX + toOtherY * desiredY;
+      if (dotAhead < 0) continue;
+
+      const perpDist = Math.abs(toOtherX * (-desiredY) + toOtherY * desiredX);
+
+      if (perpDist < avoidRadius) {
+        const perpAvoidX = -desiredY;
+        const perpAvoidY = desiredX;
+        const side = toOtherX * perpAvoidX + toOtherY * perpAvoidY;
+        const strength = (1 - toOtherDist / lookAhead) * (1 - perpDist / avoidRadius);
+
+        if (side > 0) {
+          avoidX -= perpAvoidX * strength;
+          avoidY -= perpAvoidY * strength;
+        } else {
+          avoidX += perpAvoidX * strength;
+          avoidY += perpAvoidY * strength;
+        }
+      }
+    }
+
+    let moveX = desiredX * 0.7 + avoidX * 1.2;
+    let moveY = desiredY * 0.7 + avoidY * 1.2;
+
+    // Boundary avoidance
+    const boundaryRadius = 500;
+    const bx = this.x - this.arenaCenterX;
+    const by = this.y - this.arenaCenterY;
+    const distFromCenter = Math.sqrt(bx * bx + by * by);
+
+    if (distFromCenter > boundaryRadius && distFromCenter > 0) {
+      const overshoot = distFromCenter - boundaryRadius;
+      const force = Math.min(overshoot / 50, 3);
+      moveX += (-bx / distFromCenter) * force;
+      moveY += (-by / distFromCenter) * force;
+    }
+
+    // Normalize and move
+    const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
+    if (moveMag > 0) {
+      this.x += (moveX / moveMag) * this.speed;
+      this.y += (moveY / moveMag) * this.speed;
+    }
+
+    // Hard clamp
+    const maxDist = 540;
+    const clampDx = this.x - this.arenaCenterX;
+    const clampDy = this.y - this.arenaCenterY;
+    const clampD = Math.sqrt(clampDx * clampDx + clampDy * clampDy);
+    if (clampD > maxDist) {
+      this.x = this.arenaCenterX + (clampDx / clampD) * maxDist;
+      this.y = this.arenaCenterY + (clampDy / clampD) * maxDist;
+    }
+  }
+
+  protected moveTowardsWithAvoidance(target: Fighter): void {
+    const toTargetX = target.x - this.x;
+    const toTargetY = target.y - this.y;
+    const toTargetDist = Math.sqrt(toTargetX * toTargetX + toTargetY * toTargetY);
+
+    if (toTargetDist === 0) return;
+
+    // Desired direction towards target
+    const desiredX = toTargetX / toTargetDist;
+    const desiredY = toTargetY / toTargetDist;
+
+    // Predictive obstacle avoidance - look ahead and steer around units
+    const lookAhead = 30; // How far ahead to check
+    const avoidRadius = 15; // How wide to check
+    let avoidX = 0;
+    let avoidY = 0;
+
+    const allUnits = [...this.nearbyAllies, ...this.nearbyEnemies];
+
+    for (const other of allUnits) {
+      if (other === this || other.isDead || other === target) continue;
+
+      // Vector to the other unit
+      const toOtherX = other.x - this.x;
+      const toOtherY = other.y - this.y;
+      const toOtherDist = Math.sqrt(toOtherX * toOtherX + toOtherY * toOtherY);
+
+      if (toOtherDist > lookAhead || toOtherDist < 0.1) continue;
+
+      // Check if other unit is ahead of us (dot product > 0)
+      const dotAhead = toOtherX * desiredX + toOtherY * desiredY;
+      if (dotAhead < 0) continue; // Behind us, ignore
+
+      // Perpendicular distance from our path to the other unit
+      const perpDist = Math.abs(toOtherX * (-desiredY) + toOtherY * desiredX);
+
+      if (perpDist < avoidRadius) {
+        // Unit is in our path - steer around it
+        // Determine which side to steer (perpendicular to desired direction)
+        const perpX = -desiredY;
+        const perpY = desiredX;
+
+        // Check which side the obstacle is on
+        const side = toOtherX * perpX + toOtherY * perpY;
+
+        // Steer to opposite side, stronger when closer
+        const strength = (1 - toOtherDist / lookAhead) * (1 - perpDist / avoidRadius);
+        if (side > 0) {
+          avoidX -= perpX * strength;
+          avoidY -= perpY * strength;
+        } else {
+          avoidX += perpX * strength;
+          avoidY += perpY * strength;
+        }
+      }
+    }
+
+    // Combine desired direction with avoidance
+    let moveX = desiredX * 0.7 + avoidX * 1.5;
+    let moveY = desiredY * 0.7 + avoidY * 1.5;
+
+    // Boundary avoidance
+    const boundaryRadius = 500;
+    const bx = this.x - this.arenaCenterX;
+    const by = this.y - this.arenaCenterY;
+    const distFromCenter = Math.sqrt(bx * bx + by * by);
+
+    if (distFromCenter > boundaryRadius && distFromCenter > 0) {
+      const overshoot = distFromCenter - boundaryRadius;
+      const force = Math.min(overshoot / 50, 3);
+      moveX += (-bx / distFromCenter) * force;
+      moveY += (-by / distFromCenter) * force;
+    }
+
+    // Normalize and move
+    const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
+    if (moveMag > 0) {
+      this.x += (moveX / moveMag) * this.speed;
+      this.y += (moveY / moveMag) * this.speed;
+    }
+
+    // Hard clamp to arena bounds
+    const maxDist = 540;
+    const dx = this.x - this.arenaCenterX;
+    const dy = this.y - this.arenaCenterY;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > maxDist) {
+      this.x = this.arenaCenterX + (dx / d) * maxDist;
+      this.y = this.arenaCenterY + (dy / d) * maxDist;
+    }
+  }
+
   protected moveForward(): void {
-    if (this.team === 'top') {
-      this.y += this.speed;
-    } else {
-      this.y -= this.speed;
+    // Move towards arena center
+    const toCenterX = this.arenaCenterX - this.x;
+    const toCenterY = this.arenaCenterY - this.y;
+    const toCenterDist = Math.sqrt(toCenterX * toCenterX + toCenterY * toCenterY);
+
+    if (toCenterDist <= 1) return;
+
+    const moveX = toCenterX / toCenterDist;
+    const moveY = toCenterY / toCenterDist;
+
+    this.x += moveX * this.speed;
+    this.y += moveY * this.speed;
+
+    // Hard clamp to arena bounds
+    const maxDist = 540;
+    const dx = this.x - this.arenaCenterX;
+    const dy = this.y - this.arenaCenterY;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > maxDist) {
+      this.x = this.arenaCenterX + (dx / d) * maxDist;
+      this.y = this.arenaCenterY + (dy / d) * maxDist;
     }
   }
 
@@ -299,8 +813,21 @@ export abstract class Fighter {
     }
   }
 
+  isFlashing(): boolean {
+    return Date.now() < this.damageFlashUntil;
+  }
+
   takeDamage(amount: number, attacker?: Fighter, isCrit: boolean = false, damageType: DamageType = 'physical'): void {
     this.health -= amount;
+
+    // Trigger damage flash
+    this.damageFlashUntil = Date.now() + 100;
+
+    // Track who last damaged this unit (for kill credit)
+    if (attacker) {
+      this.lastAttackerTeam = attacker.team;
+      this.lastAttackerType = attacker.getType();
+    }
 
     // Record damage to DPS tracker
     if (attacker) {
@@ -355,19 +882,20 @@ export abstract class Fighter {
   draw(ctx: CanvasRenderingContext2D): void {
     if (this.isDead) return;
 
-    const bobOffset = Math.sin(this.animationFrame * Math.PI / 2) * 2;
+    const bobOffset = Math.sin(this.animationFrame * Math.PI / 2) * 0.5;
 
     // Draw frozen effect
     if (Date.now() < this.statusEffects.frozenUntil) {
       ctx.fillStyle = 'rgba(135, 206, 235, 0.5)';
       ctx.fillRect(
-        this.x - this.width / 2 - 3,
-        this.y - this.height / 2 + bobOffset - 3,
-        this.width + 6,
-        this.height + 6
+        this.x - this.width / 2 - 1,
+        this.y - this.height / 2 + bobOffset - 1,
+        this.width + 2,
+        this.height + 2
       );
     }
 
+    // Draw unit as small colored square with team outline
     ctx.fillStyle = this.getColor();
     ctx.fillRect(
       this.x - this.width / 2,
@@ -376,32 +904,37 @@ export abstract class Fighter {
       this.height
     );
 
-    ctx.fillStyle = this.team === 'top' ? '#2563eb' : '#dc2626';
-    ctx.beginPath();
-    ctx.arc(this.x, this.y - this.height / 2 - 8 + bobOffset, 10, 0, Math.PI * 2);
-    ctx.fill();
+    // Team color outline
+    ctx.strokeStyle = TEAM_COLORS[this.team];
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      this.x - this.width / 2,
+      this.y - this.height / 2 + bobOffset,
+      this.width,
+      this.height
+    );
 
-    // Draw burn effect
+    // Draw burn effect (smaller)
     if (this.statusEffects.burning > 0) {
       ctx.fillStyle = 'rgba(255, 100, 0, 0.6)';
       ctx.beginPath();
-      ctx.arc(this.x, this.y + bobOffset, 20, 0, Math.PI * 2);
+      ctx.arc(this.x, this.y + bobOffset, 5, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Draw poison effect
+    // Draw poison effect (smaller)
     if (this.statusEffects.poison > 0) {
       ctx.fillStyle = 'rgba(100, 255, 0, 0.4)';
       ctx.beginPath();
-      ctx.arc(this.x, this.y + 10 + bobOffset, 15, 0, Math.PI * 2);
+      ctx.arc(this.x, this.y + 2 + bobOffset, 4, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Draw void effect
+    // Draw void effect (smaller)
     if (this.statusEffects.void > 0) {
       ctx.fillStyle = 'rgba(139, 92, 246, 0.5)';
       ctx.beginPath();
-      ctx.arc(this.x, this.y - 5 + bobOffset, 18, 0, Math.PI * 2);
+      ctx.arc(this.x, this.y - 1 + bobOffset, 5, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -474,21 +1007,24 @@ export abstract class Fighter {
   }
 
   protected drawHealthBar(ctx: CanvasRenderingContext2D): void {
-    const barWidth = 20;
-    const barHeight = 3;
+    const barWidth = 6;
+    const barHeight = 1;
     const barX = this.x - barWidth / 2;
-    const barY = this.y - 18;
+    // Position above unit's sprite
+    const barY = this.y - 8;
 
+    // Background (dark)
+    ctx.fillStyle = '#000';
+    ctx.fillRect(barX - 1, barY - 1, barWidth + 2, barHeight + 2);
+
+    // Empty bar (gray)
     ctx.fillStyle = '#333';
     ctx.fillRect(barX, barY, barWidth, barHeight);
 
+    // Health fill (colored based on health %)
     const healthPercent = this.health / this.maxHealth;
     const healthColor = healthPercent > 0.5 ? '#22c55e' : healthPercent > 0.25 ? '#eab308' : '#ef4444';
     ctx.fillStyle = healthColor;
     ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
-
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX, barY, barWidth, barHeight);
   }
 }

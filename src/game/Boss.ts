@@ -29,11 +29,11 @@ export class Boss extends Fighter {
     this.isBoss = true;
 
     // Position at the tower location
-    this.y = team === 'top' ? 70 : canvasHeight - 70;
+    this.y = team === 'blue' ? 70 : canvasHeight - 70;
   }
 
   getColor(): string {
-    return this.team === 'top' ? '#1e40af' : '#991b1b';
+    return this.team === 'blue' ? '#1e40af' : '#991b1b';
   }
 
   getType(): FighterType {

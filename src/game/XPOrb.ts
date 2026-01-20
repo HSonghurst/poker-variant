@@ -79,14 +79,14 @@ export class XPOrb {
     this.attractedToPlayer = false;
 
     // Drift toward the target team's side
-    const direction = this.targetTeam === 'top' ? -1 : 1;
+    const direction = this.targetTeam === 'blue' ? -1 : 1;
 
     this.y += direction * this.speed * deltaTime;
 
     // Check if reached collection zone
-    if (this.targetTeam === 'top' && this.y <= 80) {
+    if (this.targetTeam === 'blue' && this.y <= 80) {
       this.collected = true;
-    } else if (this.targetTeam === 'bottom' && this.y >= canvasHeight - 80) {
+    } else if (this.targetTeam === 'red' && this.y >= canvasHeight - 80) {
       this.collected = true;
     }
   }

@@ -74,8 +74,34 @@ export class UnitCardDeck {
 
   deal(count: number): UnitCard[] {
     const dealt: UnitCard[] = [];
+    let healerDealt = false;
+
     for (let i = 0; i < count && this.cards.length > 0; i++) {
-      const card = this.cards.pop()!;
+      let card = this.cards.pop()!;
+
+      // Prevent double healers in same hand
+      if (card.type === 'healer' && healerDealt) {
+        // Find a non-healer card to swap with
+        let swapped = false;
+        for (let j = this.cards.length - 1; j >= 0; j--) {
+          if (this.cards[j].type !== 'healer') {
+            // Put the healer back and take the non-healer
+            this.cards.push(card);
+            card = this.cards.splice(j, 1)[0];
+            swapped = true;
+            break;
+          }
+        }
+        // If no swap possible, just use the healer anyway
+        if (!swapped) {
+          // Already popped, just use it
+        }
+      }
+
+      if (card.type === 'healer') {
+        healerDealt = true;
+      }
+
       dealt.push(card);
       this.dealtCards.push(card);
     }

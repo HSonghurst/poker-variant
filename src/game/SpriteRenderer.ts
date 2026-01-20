@@ -1,5 +1,15 @@
 import type { Team } from './types';
 
+// Team colors for sprites
+const TEAM_COLORS: Record<Team, string> = {
+  blue: '#2563eb',        // Blue
+  purple: '#7c3aed',   // Purple
+  pink: '#db2777', // Pink
+  red: '#dc2626',     // Red (player)
+  orange: '#ea580c', // Orange
+  green: '#16a34a'     // Green
+};
+
 // Pixel art sprite renderer for units
 export class SpriteRenderer {
   // Draw a pixel at a specific position (scaled)
@@ -8,16 +18,32 @@ export class SpriteRenderer {
     ctx.fillRect(x, y, size, size);
   }
 
+  // Helper to darken a hex color
+  private static darkenColor(hex: string, factor: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgb(${Math.floor(r * factor)}, ${Math.floor(g * factor)}, ${Math.floor(b * factor)})`;
+  }
+
+  // Helper to lighten a hex color
+  private static lightenColor(hex: string, factor: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgb(${Math.min(255, Math.floor(r + (255 - r) * factor))}, ${Math.min(255, Math.floor(g + (255 - g) * factor))}, ${Math.min(255, Math.floor(b + (255 - b) * factor))})`;
+  }
+
   static drawTower(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team): void {
-    const p = 4; // pixel size for tower (larger)
+    const p = 1; // pixel size for tower
     const baseX = x - 6 * p;
     const baseY = y - 10 * p;
 
-    const stone = team === 'top' ? '#4a5568' : '#78716c';
-    const stoneDark = team === 'top' ? '#2d3748' : '#57534e';
-    const stoneLight = team === 'top' ? '#718096' : '#a8a29e';
-    const accent = team === 'top' ? '#3b82f6' : '#ef4444';
-    const accentDark = team === 'top' ? '#1d4ed8' : '#b91c1c';
+    const stone = team === 'blue' ? '#4a5568' : '#78716c';
+    const stoneDark = team === 'blue' ? '#2d3748' : '#57534e';
+    const stoneLight = team === 'blue' ? '#718096' : '#a8a29e';
+    const accent = team === 'blue' ? '#3b82f6' : '#ef4444';
+    const accentDark = team === 'blue' ? '#1d4ed8' : '#b91c1c';
     const window = '#1a1a2e';
 
     // Tower top battlements
@@ -82,13 +108,19 @@ export class SpriteRenderer {
     this.pixel(ctx, baseX + 11*p, baseY + 12*p, p, stoneDark);
   }
 
-  static drawSwordsman(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number): void {
-    const p = 4; // pixel size (larger for full-screen canvas)
+  static drawSwordsman(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number, flashing: boolean = false): void {
+    const p = 1;
     const baseX = x - 5 * p;
     const baseY = y - 6 * p;
     const bobOffset = Math.sin(frame * Math.PI / 2) * 1;
 
-    if (team === 'top') {
+    // Use team color for main body (or white if flashing)
+    const teamColor = flashing ? '#ffffff' : TEAM_COLORS[team];
+    const skin = teamColor;
+    const armorDark = this.darkenColor(teamColor, 0.3);
+    const sword = '#c0c0c0';
+
+    if (false && team === 'blue') {
       // Goblin Warrior - green skin, crude armor, jagged sword
       const skin = '#4a7c3f';
       const skinDark = '#3d6634';
@@ -136,56 +168,60 @@ export class SpriteRenderer {
       this.pixel(ctx, baseX + 8*p, baseY + 1*p + bobOffset - swordOffset, p, sword);
       this.pixel(ctx, baseX + 9*p, baseY + bobOffset - swordOffset, p, sword);
       this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset - swordOffset, p, '#3d2817');
-    } else {
-      // Human Swordsman
-      const skin = '#ffd5b5';
-      const armor = '#ef4444';
-      const armorDark = '#b91c1c';
-      const sword = '#c0c0c0';
-      const swordHilt = '#8B4513';
-
-      // Helmet
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, armorDark);
-
-      // Face
-      this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, armor);
-
-      // Body
-      for (let i = 0; i < 3; i++) {
-        this.pixel(ctx, baseX + 3*p, baseY + (2+i)*p + bobOffset, p, armorDark);
-        this.pixel(ctx, baseX + 4*p, baseY + (2+i)*p + bobOffset, p, armor);
-        this.pixel(ctx, baseX + 5*p, baseY + (2+i)*p + bobOffset, p, armor);
-        this.pixel(ctx, baseX + 6*p, baseY + (2+i)*p + bobOffset, p, armorDark);
-      }
-
-      // Legs
-      this.pixel(ctx, baseX + 3*p, baseY + 5*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 6*p, baseY + 5*p + bobOffset, p, armorDark);
-
-      // Sword (animated)
-      const swordOffset = frame % 2 === 0 ? 0 : p;
-      this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset - swordOffset, p, sword);
-      this.pixel(ctx, baseX + 8*p, baseY + 1*p + bobOffset - swordOffset, p, sword);
-      this.pixel(ctx, baseX + 8*p, baseY + bobOffset - swordOffset, p, sword);
-      this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset - swordOffset, p, swordHilt);
     }
+
+    // Draw using team colors
+    const swordHilt = '#8B4513';
+    const skinLight = this.lightenColor(teamColor, 0.3);
+
+    // Helmet
+    this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, armorDark);
+
+    // Face
+    this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skinLight);
+    this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skinLight);
+    this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, skin);
+
+    // Body
+    for (let i = 0; i < 3; i++) {
+      this.pixel(ctx, baseX + 3*p, baseY + (2+i)*p + bobOffset, p, armorDark);
+      this.pixel(ctx, baseX + 4*p, baseY + (2+i)*p + bobOffset, p, skin);
+      this.pixel(ctx, baseX + 5*p, baseY + (2+i)*p + bobOffset, p, skin);
+      this.pixel(ctx, baseX + 6*p, baseY + (2+i)*p + bobOffset, p, armorDark);
+    }
+
+    // Legs
+    this.pixel(ctx, baseX + 3*p, baseY + 5*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 6*p, baseY + 5*p + bobOffset, p, armorDark);
+
+    // Sword (animated)
+    const swordOffset = frame % 2 === 0 ? 0 : p;
+    this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset - swordOffset, p, sword);
+    this.pixel(ctx, baseX + 8*p, baseY + 1*p + bobOffset - swordOffset, p, sword);
+    this.pixel(ctx, baseX + 8*p, baseY + bobOffset - swordOffset, p, sword);
+    this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset - swordOffset, p, swordHilt);
   }
 
-  static drawArcher(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number): void {
-    const p = 4;
+  static drawArcher(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number, flashing: boolean = false): void {
+    const p = 1;
     const baseX = x - 5 * p;
     const baseY = y - 6 * p;
     const bobOffset = Math.sin(frame * Math.PI / 2) * 1;
 
-    if (team === 'top') {
+    // Use team color (or white if flashing)
+    const teamColor = flashing ? '#ffffff' : TEAM_COLORS[team];
+    const skin = teamColor;
+    const skinDark = this.darkenColor(teamColor, 0.7);
+    const skinLight = this.lightenColor(teamColor, 0.3);
+    const bow = '#8B4513';
+
+    if (false && team === 'blue') {
       // Goblin Archer - green skin, crude short bow
       const skin = '#4a7c3f';
       const skinDark = '#3d6634';
@@ -228,53 +264,55 @@ export class SpriteRenderer {
       this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, bow);
       this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, bow);
       this.pixel(ctx, baseX + 7*p, baseY + 4*p + bobOffset, p, bow);
-    } else {
-      // Human Archer
-      const skin = '#ffd5b5';
-      const cloth = '#f97316';
-      const clothDark = '#c2410c';
-      const hair = '#5c3317';
-      const bow = '#8B4513';
-
-      // Hair/Hood
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, clothDark);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, cloth);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, cloth);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, clothDark);
-
-      // Face
-      this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, hair);
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, hair);
-
-      // Body (slimmer)
-      this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, cloth);
-      this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, cloth);
-      this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, clothDark);
-      this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, clothDark);
-
-      // Legs
-      this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, clothDark);
-      this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, clothDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, '#3d2817');
-      this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, '#3d2817');
-
-      // Bow
-      this.pixel(ctx, baseX + 7*p, baseY + 1*p + bobOffset, p, bow);
-      this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, bow);
-      this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, bow);
-      this.pixel(ctx, baseX + 7*p, baseY + 4*p + bobOffset, p, bow);
     }
+
+    // Draw using team colors
+    // Hair/Hood
+    this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, skinDark);
+
+    // Face
+    this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skinLight);
+    this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skinLight);
+    this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, skinDark);
+
+    // Body (slimmer)
+    this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, skinDark);
+
+    // Legs
+    this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, skinDark);
+
+    // Bow
+    this.pixel(ctx, baseX + 7*p, baseY + 1*p + bobOffset, p, bow);
+    this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, bow);
+    this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, bow);
+    this.pixel(ctx, baseX + 7*p, baseY + 4*p + bobOffset, p, bow);
   }
 
-  static drawMage(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number): void {
-    const p = 4;
+  static drawMage(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number, flashing: boolean = false): void {
+    const p = 1;
     const baseX = x - 5 * p;
     const baseY = y - 6 * p;
     const bobOffset = Math.sin(frame * Math.PI / 2) * 1;
 
-    if (team === 'top') {
+    // Use team color (or white if flashing)
+    const teamColor = flashing ? '#ffffff' : TEAM_COLORS[team];
+    const skin = teamColor;
+    const skinDark = this.darkenColor(teamColor, 0.7);
+    const skinLight = this.lightenColor(teamColor, 0.3);
+    const staff = '#8B4513';
+    const orb = '#a855f7';
+
+    if (false && team === 'blue') {
       // Goblin Shaman - green skin, skull staff, tribal markings
       const skin = '#4a7c3f';
       const skinDark = '#3d6634';
@@ -329,192 +367,131 @@ export class SpriteRenderer {
       const glowColor = frame % 2 === 0 ? skull : '#22ff22';
       this.pixel(ctx, baseX + 8*p, baseY + bobOffset, p, glowColor);
       this.pixel(ctx, baseX + 8*p, baseY + p + bobOffset, p, skull);
-    } else {
-      // Human Mage
-      const skin = '#ffd5b5';
-      const robe = '#f472b6';
-      const robeDark = '#db2777';
-      const staff = '#8B4513';
-      const orb = '#fbbf24';
-
-      // Hat point
-      this.pixel(ctx, baseX + 4*p, baseY - p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 5*p, baseY - p + bobOffset, p, robeDark);
-
-      // Hat brim
-      this.pixel(ctx, baseX + 2*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 7*p, baseY + bobOffset, p, robe);
-
-      // Face
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skin);
-
-      // Robe body
-      this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, robeDark);
-
-      this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, robeDark);
-
-      // Robe bottom
-      this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, robeDark);
-
-      // Staff with orb
-      this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, staff);
-      this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, staff);
-      this.pixel(ctx, baseX + 8*p, baseY + 4*p + bobOffset, p, staff);
-
-      // Glowing orb (animated)
-      const glowColor = frame % 2 === 0 ? orb : '#fcd34d';
-      this.pixel(ctx, baseX + 8*p, baseY + p + bobOffset, p, glowColor);
     }
+
+    // Draw using team colors
+    // Hat point
+    this.pixel(ctx, baseX + 4*p, baseY - p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 5*p, baseY - p + bobOffset, p, skinDark);
+
+    // Hat brim
+    this.pixel(ctx, baseX + 2*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 7*p, baseY + bobOffset, p, skin);
+
+    // Face
+    this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skinLight);
+    this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skinLight);
+
+    // Robe body
+    this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, skinDark);
+
+    this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, skinDark);
+
+    // Robe bottom
+    this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, skinDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, skin);
+    this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, skinDark);
+
+    // Staff with orb
+    this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, staff);
+    this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, staff);
+    this.pixel(ctx, baseX + 8*p, baseY + 4*p + bobOffset, p, staff);
+
+    // Glowing orb (animated)
+    const glowColor = frame % 2 === 0 ? orb : this.lightenColor(orb, 0.3);
+    this.pixel(ctx, baseX + 8*p, baseY + p + bobOffset, p, glowColor);
   }
 
-  static drawKnight(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number): void {
-    const p = 4;
+  static drawKnight(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number, flashing: boolean = false): void {
+    const p = 1;
     const baseX = x - 5 * p;
     const baseY = y - 6 * p;
     const bobOffset = Math.sin(frame * Math.PI / 2) * 1;
 
-    if (team === 'top') {
-      // Goblin Brute - green skin, crude spiked helmet, wooden shield
-      const skin = '#4a7c3f';
-      const skinDark = '#3d6634';
-      const helmet = '#4a4a4a';
-      const helmetDark = '#2d2d2d';
-      const spike = '#6b6b6b';
-      const shield = '#6b4423';
-      const shieldDark = '#4a2f18';
+    // Use team color (or white if flashing)
+    const teamColor = flashing ? '#ffffff' : TEAM_COLORS[team];
+    const armor = teamColor;
+    const armorDark = this.darkenColor(teamColor, 0.6);
+    const armorLight = this.lightenColor(teamColor, 0.3);
+    const shield = this.lightenColor(teamColor, 0.4);
 
-      // Spiked helmet
-      this.pixel(ctx, baseX + 3*p, baseY - p + bobOffset, p, spike);
-      this.pixel(ctx, baseX + 5*p, baseY - 2*p + bobOffset, p, spike);
-      this.pixel(ctx, baseX + 6*p, baseY - p + bobOffset, p, spike);
-
-      // Helmet
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, helmetDark);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, helmet);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, helmet);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, helmetDark);
-
-      // Face (visible through helmet)
-      this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, helmetDark);
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, '#ff0000'); // Red angry eye
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, '#ff0000'); // Red angry eye
-      this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, helmetDark);
-
-      // Body (bulky, some armor)
-      this.pixel(ctx, baseX + 2*p, baseY + 2*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, helmet);
-      this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, helmet);
-      this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 7*p, baseY + 2*p + bobOffset, p, skinDark);
-
-      this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, skinDark);
-
-      // Legs
-      this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, skinDark);
-
-      this.pixel(ctx, baseX + 3*p, baseY + 5*p + bobOffset, p, '#333');
-      this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 6*p, baseY + 5*p + bobOffset, p, '#333');
-
-      // Crude wooden shield
-      this.pixel(ctx, baseX + p, baseY + 2*p + bobOffset, p, shield);
-      this.pixel(ctx, baseX + p, baseY + 3*p + bobOffset, p, shield);
-      this.pixel(ctx, baseX, baseY + 2*p + bobOffset, p, shieldDark);
-      this.pixel(ctx, baseX, baseY + 3*p + bobOffset, p, shieldDark);
-    } else {
-      // Human Knight
-      const armor = '#78716c';
-      const armorLight = '#a8a29e';
-      const armorDark = '#44403c';
-      const plume = '#dc2626';
-      const shield = '#fbbf24';
-
-      // Helmet plume
-      this.pixel(ctx, baseX + 4*p, baseY - p + bobOffset, p, plume);
-      this.pixel(ctx, baseX + 5*p, baseY - p + bobOffset, p, plume);
-
-      // Helmet
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, armorDark);
-
-      // Visor
-      this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, '#1a1a2e');
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, '#1a1a2e');
-      this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, armorDark);
-
-      // Body (bulky)
-      this.pixel(ctx, baseX + 2*p, baseY + 2*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, armorLight);
-      this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, armorLight);
-      this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 7*p, baseY + 2*p + bobOffset, p, armorDark);
-
-      this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, armorDark);
-
-      // Legs
-      this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, armor);
-      this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, armorDark);
-
-      this.pixel(ctx, baseX + 3*p, baseY + 5*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX + 6*p, baseY + 5*p + bobOffset, p, armorDark);
-
-      // Shield
-      this.pixel(ctx, baseX + p, baseY + 2*p + bobOffset, p, shield);
-      this.pixel(ctx, baseX + p, baseY + 3*p + bobOffset, p, shield);
-      this.pixel(ctx, baseX, baseY + 2*p + bobOffset, p, armorDark);
-      this.pixel(ctx, baseX, baseY + 3*p + bobOffset, p, armorDark);
+    if (false && team === 'blue') {
+      // Goblin Brute (skipped - using team colors now)
     }
+
+    // Draw using team colors
+    // Helmet plume
+    this.pixel(ctx, baseX + 4*p, baseY - p + bobOffset, p, armorLight);
+    this.pixel(ctx, baseX + 5*p, baseY - p + bobOffset, p, armorLight);
+
+    // Helmet
+    this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, armorDark);
+
+    // Visor
+    this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, '#1a1a2e');
+    this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, '#1a1a2e');
+    this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, armorDark);
+
+    // Body (bulky)
+    this.pixel(ctx, baseX + 2*p, baseY + 2*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, armorLight);
+    this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, armorLight);
+    this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 7*p, baseY + 2*p + bobOffset, p, armorDark);
+
+    this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, armorDark);
+
+    // Legs
+    this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, armor);
+    this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, armorDark);
+
+    this.pixel(ctx, baseX + 3*p, baseY + 5*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX + 6*p, baseY + 5*p + bobOffset, p, armorDark);
+
+    // Shield
+    this.pixel(ctx, baseX + p, baseY + 2*p + bobOffset, p, shield);
+    this.pixel(ctx, baseX + p, baseY + 3*p + bobOffset, p, shield);
+    this.pixel(ctx, baseX, baseY + 2*p + bobOffset, p, armorDark);
+    this.pixel(ctx, baseX, baseY + 3*p + bobOffset, p, armorDark);
   }
 
   static drawHorseman(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number, direction: 'up' | 'down' | 'left' | 'right' = 'right'): void {
-    const p = 4; // pixel size (larger for full-screen canvas)
+    const p = 1; // pixel size (tiny units)
     const bobOffset = Math.sin(frame * Math.PI / 2) * 1;
 
     // Colors
     const skin = '#ffd5b5';
-    const armor = team === 'top' ? '#3b82f6' : '#ef4444';
-    const armorDark = team === 'top' ? '#1d4ed8' : '#b91c1c';
-    const armorLight = team === 'top' ? '#60a5fa' : '#f87171';
-    const cape = team === 'top' ? '#1e40af' : '#991b1b';
+    const armor = team === 'blue' ? '#3b82f6' : '#ef4444';
+    const armorDark = team === 'blue' ? '#1d4ed8' : '#b91c1c';
+    const armorLight = team === 'blue' ? '#60a5fa' : '#f87171';
+    const cape = team === 'blue' ? '#1e40af' : '#991b1b';
     const horse = '#8b4513';
     const horseDark = '#5c3317';
     const horseLight = '#a0522d';
@@ -931,7 +908,7 @@ export class SpriteRenderer {
   }
 
   static drawBoss(ctx: CanvasRenderingContext2D, x: number, y: number, _team: Team, frame: number): void {
-    const p = 4; // Bigger pixel size for ogre
+    const p = 1; // pixel size for ogre
     const baseX = x - 6 * p;
     const baseY = y - 10 * p;
     const bobOffset = Math.sin(frame * Math.PI / 2) * 2;
@@ -1071,7 +1048,7 @@ export class SpriteRenderer {
   }
 
   static drawWraith(ctx: CanvasRenderingContext2D, x: number, y: number, _team: Team, frame: number): void {
-    const p = 4; // Pixel size
+    const p = 1; // pixel size
     const baseX = x - 8 * p;
     const baseY = y - 12 * p;
 
@@ -1201,116 +1178,64 @@ export class SpriteRenderer {
     this.pixel(ctx, baseX + 2*p, baseY + 7*p + floatOffset + scytheSwing, p, '#e8e8e8');
   }
 
-  static drawHealer(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number): void {
-    const p = 4;
+  static drawHealer(ctx: CanvasRenderingContext2D, x: number, y: number, team: Team, frame: number, flashing: boolean = false): void {
+    const p = 1;
     const baseX = x - 5 * p;
     const baseY = y - 6 * p;
     const bobOffset = Math.sin(frame * Math.PI / 2) * 1;
 
-    if (team === 'top') {
-      // Goblin Witch Doctor - green skin, bone staff, tribal mask
-      const skin = '#4a7c3f';
-      const skinDark = '#3d6634';
-      const mask = '#f5f5dc';
-      const maskDark = '#d4c4a8';
-      const staff = '#e8e8e8'; // Bone staff
-      const staffDark = '#c0c0c0';
-      const feather = '#ff4444';
+    // Use team color (or white if flashing)
+    const teamColor = flashing ? '#ffffff' : TEAM_COLORS[team];
+    const robe = teamColor;
+    const robeDark = this.darkenColor(teamColor, 0.7);
+    const robeLight = this.lightenColor(teamColor, 0.3);
+    const staff = '#deb887';
+    const crystal = this.lightenColor(teamColor, 0.5);
 
-      // Feathers on head
-      this.pixel(ctx, baseX + 3*p, baseY - p + bobOffset, p, feather);
-      this.pixel(ctx, baseX + 6*p, baseY - p + bobOffset, p, feather);
-
-      // Tribal mask
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, maskDark);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, mask);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, mask);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, maskDark);
-
-      // Mask face with eye holes
-      this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, mask);
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, '#00ff00'); // Glowing green eye
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, '#00ff00'); // Glowing green eye
-      this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, mask);
-
-      // Body (bare chest with necklace)
-      this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, '#f5f5dc'); // Bone necklace
-      this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, '#f5f5dc');
-      this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, skin);
-
-      this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, skinDark);
-
-      // Loincloth
-      this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, '#5c4033');
-      this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, '#5c4033');
-      this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, '#5c4033');
-      this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, '#5c4033');
-
-      // Legs
-      this.pixel(ctx, baseX + 4*p, baseY + 5*p + bobOffset, p, skinDark);
-      this.pixel(ctx, baseX + 5*p, baseY + 5*p + bobOffset, p, skinDark);
-
-      // Bone staff with skull
-      this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, staff);
-      this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, staffDark);
-      this.pixel(ctx, baseX + 8*p, baseY + 4*p + bobOffset, p, staff);
-
-      // Skull on staff (glowing green)
-      const glowColor = frame % 2 === 0 ? '#22ff22' : '#00dd00';
-      this.pixel(ctx, baseX + 8*p, baseY + bobOffset, p, glowColor);
-      this.pixel(ctx, baseX + 8*p, baseY + p + bobOffset, p, staff);
-    } else {
-      // Human Healer - white robes, healing staff
-      const skin = '#ffd5b5';
-      const robe = '#e0f2fe';
-      const robeDark = '#7dd3fc';
-      const staff = '#deb887';
-      const crystal = '#22d3ee';
-
-      // Hood/hair
-      this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, robeDark);
-
-      // Face
-      this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, skin);
-      this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, robe);
-
-      // Robe body
-      this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, robeDark);
-
-      this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, robeDark);
-
-      // Robe bottom
-      this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, robeDark);
-      this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, robe);
-      this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, robeDark);
-
-      // Staff with crystal
-      this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, staff);
-      this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, staff);
-      this.pixel(ctx, baseX + 8*p, baseY + 4*p + bobOffset, p, staff);
-
-      // Healing crystal (animated glow)
-      const glowColor = frame % 2 === 0 ? crystal : '#67e8f9';
-      this.pixel(ctx, baseX + 8*p, baseY + bobOffset, p, glowColor);
-      this.pixel(ctx, baseX + 8*p, baseY + p + bobOffset, p, crystal);
+    if (false && team === 'blue') {
+      // Goblin Witch Doctor (skipped - using team colors now)
     }
+
+    // Draw using team colors
+    // Hood/hair
+    this.pixel(ctx, baseX + 3*p, baseY + bobOffset, p, robeDark);
+    this.pixel(ctx, baseX + 4*p, baseY + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 5*p, baseY + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 6*p, baseY + bobOffset, p, robeDark);
+
+    // Face
+    this.pixel(ctx, baseX + 3*p, baseY + p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 4*p, baseY + p + bobOffset, p, robeLight);
+    this.pixel(ctx, baseX + 5*p, baseY + p + bobOffset, p, robeLight);
+    this.pixel(ctx, baseX + 6*p, baseY + p + bobOffset, p, robe);
+
+    // Robe body
+    this.pixel(ctx, baseX + 3*p, baseY + 2*p + bobOffset, p, robeDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 2*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 5*p, baseY + 2*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 6*p, baseY + 2*p + bobOffset, p, robeDark);
+
+    this.pixel(ctx, baseX + 2*p, baseY + 3*p + bobOffset, p, robeDark);
+    this.pixel(ctx, baseX + 3*p, baseY + 3*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 4*p, baseY + 3*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 5*p, baseY + 3*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 6*p, baseY + 3*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 7*p, baseY + 3*p + bobOffset, p, robeDark);
+
+    // Robe bottom
+    this.pixel(ctx, baseX + 3*p, baseY + 4*p + bobOffset, p, robeDark);
+    this.pixel(ctx, baseX + 4*p, baseY + 4*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 5*p, baseY + 4*p + bobOffset, p, robe);
+    this.pixel(ctx, baseX + 6*p, baseY + 4*p + bobOffset, p, robeDark);
+
+    // Staff with crystal
+    this.pixel(ctx, baseX + 8*p, baseY + 2*p + bobOffset, p, staff);
+    this.pixel(ctx, baseX + 8*p, baseY + 3*p + bobOffset, p, staff);
+    this.pixel(ctx, baseX + 8*p, baseY + 4*p + bobOffset, p, staff);
+
+    // Healing crystal (animated glow)
+    const glowColor = frame % 2 === 0 ? crystal : this.lightenColor(crystal, 0.3);
+    this.pixel(ctx, baseX + 8*p, baseY + bobOffset, p, glowColor);
+    this.pixel(ctx, baseX + 8*p, baseY + p + bobOffset, p, crystal);
   }
 }
