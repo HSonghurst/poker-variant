@@ -108,12 +108,6 @@ export abstract class Fighter {
   applyModifiers(modifiers: TeamModifiers): void {
     this.modifiers = modifiers;
     const type = this.getType();
-    if (modifiers.archerFanAbility || modifiers.swordsmanSweepAbility) {
-      console.log(`[Fighter] ${type} received modifiers:`, {
-        archerFanAbility: modifiers.archerFanAbility,
-        swordsmanSweepAbility: modifiers.swordsmanSweepAbility
-      });
-    }
 
     // Apply health multiplier
     const healthMult = modifiers.getHealthMultiplier(type);
@@ -203,20 +197,29 @@ export abstract class Fighter {
       const distToTarget = this.getDistanceTo(this.target);
 
       if (distToTarget <= this.attackRange) {
-        // Close enough to attack
+        // Close enough to attack assigned target
         this.attackState = AttackState.ATTACKING;
         SlotManager.occupySlot(this);
         this.attack(this.target, enemies);
         this.applySeparation();
-      } else if (slotDist > 3) {
-        // Need to move to our slot
-        this.attackState = AttackState.MOVING_TO_SLOT;
-        this.moveToSlot(assignment.slot);
       } else {
-        // At slot but not in attack range (target moved) - update slots and follow
-        SlotManager.updateSlotPositions(this.target, this.attackRange);
-        this.attackState = AttackState.MOVING_TO_SLOT;
-        this.moveToSlot(assignment.slot);
+        // Not in range of assigned target - check for opportunistic attack first
+        const opportunisticTarget = findEnemyInRange(this, enemies);
+        if (opportunisticTarget) {
+          // Attack nearby enemy while moving to slot
+          this.attackState = AttackState.OPPORTUNISTIC;
+          this.attack(opportunisticTarget, enemies);
+        }
+
+        // Continue moving to slot
+        if (slotDist > 3) {
+          this.attackState = AttackState.MOVING_TO_SLOT;
+          this.moveToSlot(assignment.slot);
+        } else {
+          // At slot but target out of range - move towards target directly
+          SlotManager.updateSlotPositions(this.target, this.attackRange);
+          this.moveTowardsWithAvoidance(this.target);
+        }
       }
     } else {
       // No slot available - try to get one while we wait

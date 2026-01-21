@@ -729,11 +729,22 @@ export class PokerRenderer {
     const godCardWidth = this.GOD_CARD_WIDTH * scale;
     const godCardHeight = this.GOD_CARD_HEIGHT * scale;
 
-    // Player label with health
-    ctx.fillStyle = PLAYER_COLORS[player.position];
+    // Check if player is eliminated
+    const isEliminated = player.health <= 0;
+
+    // Player label with health or elimination status
+    ctx.fillStyle = isEliminated ? '#666' : PLAYER_COLORS[player.position];
     ctx.font = `bold ${Math.round(14 * scale)}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(PLAYER_NAMES[player.position], centerX, centerY - cardHeight / 2 - 22);
+
+    if (isEliminated) {
+      ctx.fillStyle = '#666';
+      ctx.font = `bold ${Math.round(11 * scale)}px monospace`;
+      ctx.fillText('ELIMINATED', centerX, centerY - cardHeight / 2 - 8);
+      return; // Don't draw cards for eliminated players
+    }
+
     const healthColor = player.health > 50 ? '#22c55e' : player.health > 25 ? '#f59e0b' : '#ef4444';
     ctx.fillStyle = healthColor;
     ctx.font = `bold ${Math.round(11 * scale)}px monospace`;
@@ -848,11 +859,22 @@ export class PokerRenderer {
     const godCardWidth = this.GOD_CARD_WIDTH * scale;
     const godCardHeight = this.GOD_CARD_HEIGHT * scale;
 
-    // Player label with health
-    ctx.fillStyle = PLAYER_COLORS[player.position];
+    // Check if player is eliminated
+    const isEliminated = player.health <= 0;
+
+    // Player label with health or elimination status
+    ctx.fillStyle = isEliminated ? '#666' : PLAYER_COLORS[player.position];
     ctx.font = `bold ${Math.round(14 * scale)}px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(PLAYER_NAMES[player.position], centerX, centerY - cardHeight / 2 - 22);
+
+    if (isEliminated) {
+      ctx.fillStyle = '#666';
+      ctx.font = `bold ${Math.round(11 * scale)}px monospace`;
+      ctx.fillText('ELIMINATED', centerX, centerY - cardHeight / 2 - 8);
+      return; // Don't draw cards for eliminated players
+    }
+
     const healthColor = player.health > 50 ? '#22c55e' : player.health > 25 ? '#f59e0b' : '#ef4444';
     ctx.fillStyle = healthColor;
     ctx.font = `bold ${Math.round(11 * scale)}px monospace`;

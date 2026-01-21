@@ -38,7 +38,6 @@ export class Archer extends Fighter {
 
       // Check for piercing ability (every 5 attacks)
       if (this.modifiers?.archerFanAbility && this.attackCount % 5 === 0 && allEnemies) {
-        console.log(`[Archer] Firing piercing arrow! Attack #${this.attackCount}`);
         this.firePiercingArrow(target, allEnemies);
       } else {
         this.arrows.push(new Arrow(this.x, this.y, target, this.damage, this.team, this));

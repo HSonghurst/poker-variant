@@ -315,6 +315,20 @@ function showGameOver(winner: PlayerPosition): void {
   gameOverDisplay.classList.remove('hidden');
 }
 
+function showVictory(): void {
+  gameOverTitle.textContent = 'VICTORY!';
+  gameOverMessage.textContent = 'All opponents have been eliminated!';
+  gameOverTitle.style.color = '#22c55e';
+  gameOverDisplay.classList.remove('hidden');
+}
+
+function showDefeat(): void {
+  gameOverTitle.textContent = 'DEFEAT';
+  gameOverMessage.textContent = 'Your health reached zero. Better luck next time!';
+  gameOverTitle.style.color = '#ef4444';
+  gameOverDisplay.classList.remove('hidden');
+}
+
 function initGame(): void {
   pokerGame = new PokerGame(STARTING_CHIPS, handleStateChange);
   pokerRenderer = new PokerRenderer(canvas);
@@ -728,6 +742,9 @@ function handleAction(action: string): void {
     // start_battle is now auto-triggered after bid_reveal timer
 
     case 'next_hand':
+      // Don't start new hand if game is over
+      if (pokerGame.isGameOver()) return;
+
       // Clear any pending timers
       if (drawPhaseTimerId !== null) {
         clearTimeout(drawPhaseTimerId);
@@ -756,6 +773,7 @@ function handleAction(action: string): void {
 // Auto-battle (skip positioning, auto-sim the fight)
 function startAutoBattle(): void {
   if (!pokerGame) return;
+  if (pokerGame.isGameOver()) return; // Don't start battle if game is over
 
   stopPokerAnimationLoop();
   const state = pokerGame.getState();
@@ -774,11 +792,7 @@ function startAutoBattle(): void {
 
   const getKeptModifiers = (position: string) => {
     const player = state.players.find(p => p.position === position);
-    const cards = player?.keptModifierCards || [];
-    if (cards.length > 0) {
-      console.log(`[startAutoBattle] ${position} has ${cards.length} kept modifier cards:`, cards.map(c => c.name));
-    }
-    return cards;
+    return player?.keptModifierCards || [];
   };
 
   // Initialize battle arena
@@ -787,6 +801,25 @@ function startAutoBattle(): void {
     if (pokerGame && battleArena) {
       const rankings = battleArena.getBattleRankings();
       pokerGame.applyBattleDamage(rankings);
+
+      // Check if game is over (only one player remaining)
+      const gameWinner = pokerGame.checkHealthGameOver();
+      if (gameWinner) {
+        // Game over!
+        if (gameWinner === 'player') {
+          showVictory();
+        } else {
+          showDefeat();
+        }
+        return;
+      }
+
+      // Check if player is eliminated (loss condition)
+      if (pokerGame.isPlayerEliminated('player')) {
+        pokerGame.setGameOver('opponent'); // Mark game as over
+        showDefeat();
+        return;
+      }
     }
     // Battle complete, go to choose phase
     pokerGame?.setPhase('choose');

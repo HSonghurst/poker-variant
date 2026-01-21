@@ -129,10 +129,12 @@ export class PokerGame {
   }
 
   startNewHand(): void {
-    // Add 10 coins to everyone at start of each round (except first)
+    // Add 10 coins to alive players at start of each round (except first)
     if (this.state.handNumber > 0) {
       for (const player of this.state.players) {
-        player.coins += 10;
+        if (player.health > 0) {
+          player.coins += 10;
+        }
       }
     }
 
@@ -163,10 +165,13 @@ export class PokerGame {
     this.godCardDeck.reset();
     this.shuffleModifierDeck();
 
-    // Deal hole cards (unit cards) and god cards to all 6 players
+    // Deal hole cards (unit cards) and god cards only to alive players
     for (const player of this.state.players) {
-      player.holeCards = this.unitDeck.deal(2);
-      player.godCards = this.godCardDeck.deal(2);
+      if (player.health > 0) {
+        player.holeCards = this.unitDeck.deal(2);
+        player.godCards = this.godCardDeck.deal(2);
+      }
+      // Eliminated players get no cards
     }
 
     // Deal all 5 community cards (modifier cards) - they'll be revealed one by one
@@ -236,6 +241,7 @@ export class PokerGame {
   placeAIBids(): void {
     for (const player of this.state.players) {
       if (player.position === 'player') continue; // Skip human player
+      if (player.health <= 0) continue; // Skip eliminated players
 
       // AI randomly bids on 1-3 cards
       const numBids = Math.floor(Math.random() * 3) + 1;
@@ -624,6 +630,9 @@ export class PokerGame {
     for (const position of aiPositions) {
       const player = this.getPlayer(position);
 
+      // Skip eliminated players
+      if (player.health <= 0) continue;
+
       // Skip if already kept a card this round or no hole cards
       if (player.hasKeptCardThisRound || player.holeCards.length === 0) continue;
 
@@ -704,13 +713,25 @@ export class PokerGame {
       const position = rankings[i];
       const player = this.getPlayer(position);
 
+      // Skip already eliminated players
+      if (player.health <= 0) continue;
+
       // 1st place (index 0) takes no damage
       if (i === 0) continue;
 
       const baseDamage = i; // 2nd place = 1, 3rd = 2, etc.
       const totalDamage = Math.round(baseDamage * roundMultiplier);
 
+      const wasAlive = player.health > 0;
       player.health = Math.max(0, player.health - totalDamage);
+
+      // Clear cards for newly eliminated players
+      if (wasAlive && player.health <= 0) {
+        player.holeCards = [];
+        player.keptCards = [];
+        player.keptModifierCards = [];
+        player.godCards = [];
+      }
     }
 
     this.notify();
@@ -729,11 +750,20 @@ export class PokerGame {
   }
 
   // Check if game should end (only one player remaining)
+  // Sets gameOver state if true
   checkHealthGameOver(): PlayerPosition | null {
     const alivePlayers = this.state.players.filter(p => p.health > 0);
     if (alivePlayers.length === 1) {
+      this.state.gameOver = true;
+      this.state.winner = alivePlayers[0].position;
       return alivePlayers[0].position;
     }
     return null;
+  }
+
+  // Mark game as over (for player elimination)
+  setGameOver(winner: PlayerPosition): void {
+    this.state.gameOver = true;
+    this.state.winner = winner;
   }
 }

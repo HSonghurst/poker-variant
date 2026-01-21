@@ -281,27 +281,42 @@ class SoundManagerClass {
     osc2.stop(ctx.currentTime + 0.15);
   }
 
-  // Taunt ability - horn sound
+  // Taunt ability - shield bash metallic clang
   playTaunt(): void {
     if (!this.enabled) return;
     const ctx = this.getContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+    // Metallic impact - high frequency ping
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
 
-    osc.frequency.setValueAtTime(200, ctx.currentTime);
-    osc.frequency.setValueAtTime(250, ctx.currentTime + 0.1);
-    osc.frequency.setValueAtTime(200, ctx.currentTime + 0.2);
-    osc.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(800, ctx.currentTime);
+    osc1.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.15);
+    osc1.type = 'triangle';
 
-    gain.gain.setValueAtTime(this.masterVolume * 0.25, ctx.currentTime);
-    gain.gain.setValueAtTime(this.masterVolume * 0.25, ctx.currentTime + 0.25);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+    gain1.gain.setValueAtTime(this.masterVolume * 0.2, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
 
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.35);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.15);
+
+    // Low thump for weight
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.frequency.setValueAtTime(120, ctx.currentTime);
+    osc2.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.1);
+    osc2.type = 'sine';
+
+    gain2.gain.setValueAtTime(this.masterVolume * 0.25, ctx.currentTime);
+    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.12);
   }
 
   // Sweep attack - whooshing arc
