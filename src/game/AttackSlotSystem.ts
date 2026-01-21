@@ -6,6 +6,9 @@ import type { Fighter } from './Fighter';
  * Manages attack positions around targets to prevent units from stacking.
  * Each target has N slots around it where attackers can stand.
  * Units reserve slots and path to them. If blocked, they attack opportunistically.
+ *
+ * SINGLE SOURCE OF TRUTH: All slot ownership is tracked via attackerAssignments Map.
+ * No redundant reservedBy field on slots - eliminates desync bugs.
  */
 
 export interface AttackSlot {
@@ -13,15 +16,14 @@ export interface AttackSlot {
   x: number;
   y: number;
   targetId: number;
-  reservedBy: number | null; // Fighter reference (using a simple id)
-  reservationTime: number;
-  isOccupied: boolean;
+  isOccupied: boolean; // Whether the attacker has physically arrived at the slot
 }
 
 export interface SlotAssignment {
   slot: AttackSlot;
   targetFighter: Fighter;
   isQueueSlot: boolean; // Whether this is a queue slot (outer ring) or attack slot (inner ring)
+  reservationTime: number; // When the slot was reserved
 }
 
 // Global slot manager - tracks slots for all targets
@@ -32,13 +34,60 @@ class SlotManagerClass {
   // Map from target fighter to their queue slots (outer ring)
   private targetQueueSlots: Map<Fighter, AttackSlot[]> = new Map();
 
-  // Map from attacker to their assigned slot (attack or queue)
+  // Map from attacker to their assigned slot - SINGLE SOURCE OF TRUTH
   private attackerAssignments: Map<Fighter, SlotAssignment> = new Map();
 
   // Configuration
   private readonly UNIT_SPACING = 10; // Approximate space each unit needs
   private readonly QUEUE_SLOT_MULTIPLIER = 1.5; // Queue slots at 1.5x attack range
   private readonly RESERVATION_TIMEOUT = 3000; // ms
+
+  /**
+   * Check if a slot is available (not reserved by a living unit, or reservation timed out)
+   * SINGLE SOURCE OF TRUTH - only checks the Map
+   */
+  private isSlotAvailable(slot: AttackSlot, excludeFighter?: Fighter): boolean {
+    const now = Date.now();
+
+    for (const [fighter, assignment] of this.attackerAssignments) {
+      if (assignment.slot === slot) {
+        // If we're checking for a specific fighter, they can use their own slot
+        if (excludeFighter && fighter === excludeFighter) {
+          return true;
+        }
+
+        // Dead fighters don't hold slots
+        if (fighter.isDead) {
+          this.attackerAssignments.delete(fighter);
+          return true;
+        }
+
+        // Check if reservation timed out
+        if (now - assignment.reservationTime > this.RESERVATION_TIMEOUT) {
+          this.attackerAssignments.delete(fighter);
+          return true;
+        }
+
+        // Slot is reserved by a living unit
+        return false;
+      }
+    }
+
+    // No one has this slot
+    return true;
+  }
+
+  /**
+   * Get the fighter who owns a slot (or null if available)
+   */
+  private getSlotOwner(slot: AttackSlot): Fighter | null {
+    for (const [fighter, assignment] of this.attackerAssignments) {
+      if (assignment.slot === slot && !fighter.isDead) {
+        return fighter;
+      }
+    }
+    return null;
+  }
 
   /**
    * Calculate number of slots based on attack range
@@ -99,8 +148,6 @@ class SlotManagerClass {
         x: target.x + Math.cos(angle + angleOffset) * slotDistance,
         y: target.y + Math.sin(angle + angleOffset) * slotDistance,
         targetId: i,
-        reservedBy: null,
-        reservationTime: 0,
         isOccupied: false
       });
     }
@@ -161,20 +208,18 @@ class SlotManagerClass {
     this.updateSlotPositions(target, avgRange);
 
     const now = Date.now();
-
-    // Get available attack slots (not reserved by units outside this group, or timed out)
     const attackerSet = new Set(attackers);
+
+    // Get available attack slots
     const availableAttackSlots = new Set(attackSlots.filter(slot => {
-      if (slot.reservedBy === null) return true;
-      // Check if reservation timed out
-      if (now - slot.reservationTime > this.RESERVATION_TIMEOUT) {
-        slot.reservedBy = null;
-        slot.isOccupied = false;
-        return true;
-      }
-      // Check if reserved by someone in our group (we'll reassign)
-      const currentAssignment = this.findAssignmentBySlot(slot);
-      if (currentAssignment && attackerSet.has(currentAssignment)) {
+      const owner = this.getSlotOwner(slot);
+      if (owner === null) return true;
+      // If owner is in our group, we'll reassign
+      if (attackerSet.has(owner)) return true;
+      // Check timeout
+      const assignment = this.attackerAssignments.get(owner);
+      if (assignment && now - assignment.reservationTime > this.RESERVATION_TIMEOUT) {
+        this.attackerAssignments.delete(owner);
         return true;
       }
       return false;
@@ -182,14 +227,12 @@ class SlotManagerClass {
 
     // Get available queue slots
     const availableQueueSlots = new Set(queueSlots.filter(slot => {
-      if (slot.reservedBy === null) return true;
-      if (now - slot.reservationTime > this.RESERVATION_TIMEOUT) {
-        slot.reservedBy = null;
-        slot.isOccupied = false;
-        return true;
-      }
-      const currentAssignment = this.findAssignmentBySlot(slot);
-      if (currentAssignment && attackerSet.has(currentAssignment)) {
+      const owner = this.getSlotOwner(slot);
+      if (owner === null) return true;
+      if (attackerSet.has(owner)) return true;
+      const assignment = this.attackerAssignments.get(owner);
+      if (assignment && now - assignment.reservationTime > this.RESERVATION_TIMEOUT) {
+        this.attackerAssignments.delete(owner);
         return true;
       }
       return false;
@@ -205,7 +248,6 @@ class SlotManagerClass {
         } else {
           availableAttackSlots.add(assignment.slot);
         }
-        assignment.slot.reservedBy = null;
         assignment.slot.isOccupied = false;
         this.attackerAssignments.delete(attacker);
       }
@@ -256,10 +298,13 @@ class SlotManagerClass {
 
       if (bestSlot) {
         // Reserve this slot for the attacker
-        bestSlot.reservedBy = attacker.x + attacker.y;
-        bestSlot.reservationTime = now;
+        this.attackerAssignments.set(attacker, {
+          slot: bestSlot,
+          targetFighter: target,
+          isQueueSlot: false,
+          reservationTime: now
+        });
         bestSlot.isOccupied = false;
-        this.attackerAssignments.set(attacker, { slot: bestSlot, targetFighter: target, isQueueSlot: false });
         availableAttackSlots.delete(bestSlot);
       } else {
         unassignedAttackers.push(attacker);
@@ -286,10 +331,13 @@ class SlotManagerClass {
       }
 
       if (bestSlot) {
-        bestSlot.reservedBy = attacker.x + attacker.y;
-        bestSlot.reservationTime = now;
+        this.attackerAssignments.set(attacker, {
+          slot: bestSlot,
+          targetFighter: target,
+          isQueueSlot: true,
+          reservationTime: now
+        });
         bestSlot.isOccupied = false;
-        this.attackerAssignments.set(attacker, { slot: bestSlot, targetFighter: target, isQueueSlot: true });
         availableQueueSlots.delete(bestSlot);
       }
     }
@@ -311,27 +359,22 @@ class SlotManagerClass {
 
       for (const slot of slots) {
         // Check if slot is available
-        if (slot.reservedBy !== null) {
-          if (now - slot.reservationTime <= this.RESERVATION_TIMEOUT) {
-            continue; // Slot still reserved
-          }
-          // Timed out - clear it
-          slot.reservedBy = null;
-          slot.isOccupied = false;
-        }
+        if (!this.isSlotAvailable(slot, attacker)) continue;
 
         // Check if slot is blocked
         if (this.isSlotBlocked(slot, attacker, allUnits)) continue;
 
         // Found an available slot! Release queue slot and take this one
-        assignment.slot.reservedBy = null;
         assignment.slot.isOccupied = false;
 
-        slot.reservedBy = attacker.x + attacker.y;
-        slot.reservationTime = now;
+        this.attackerAssignments.set(attacker, {
+          slot,
+          targetFighter: target,
+          isQueueSlot: false,
+          reservationTime: now
+        });
         slot.isOccupied = false;
 
-        this.attackerAssignments.set(attacker, { slot, targetFighter: target, isQueueSlot: false });
         return slot;
       }
     }
@@ -340,35 +383,13 @@ class SlotManagerClass {
   }
 
   /**
-   * Find which attacker has a slot reserved
-   */
-  private findAssignmentBySlot(slot: AttackSlot): Fighter | null {
-    for (const [attacker, assignment] of this.attackerAssignments) {
-      if (assignment.slot === slot) {
-        return attacker;
-      }
-    }
-    return null;
-  }
-
-  /**
    * Find the best available slot for an attacker (fallback for individual requests)
    */
   findBestSlot(attacker: Fighter, target: Fighter, allUnits: Fighter[]): AttackSlot | null {
     const slots = this.getOrCreateSlots(target, attacker.attackRange);
-    const now = Date.now();
 
-    // Filter to available slots (not reserved or timed out)
-    const availableSlots = slots.filter(slot => {
-      if (slot.reservedBy === null) return true;
-      // Check if reservation timed out
-      if (now - slot.reservationTime > this.RESERVATION_TIMEOUT) {
-        slot.reservedBy = null;
-        slot.isOccupied = false;
-        return true;
-      }
-      return false;
-    });
+    // Filter to available slots
+    const availableSlots = slots.filter(slot => this.isSlotAvailable(slot, attacker));
 
     if (availableSlots.length === 0) return null;
 
@@ -422,18 +443,21 @@ class SlotManagerClass {
    * Reserve a slot for an attacker
    */
   reserveSlot(attacker: Fighter, slot: AttackSlot, target: Fighter, isQueueSlot: boolean = false): boolean {
-    if (slot.reservedBy !== null && slot.reservedBy !== attacker.x + attacker.y) {
+    // Check if slot is available for this attacker
+    if (!this.isSlotAvailable(slot, attacker)) {
       return false;
     }
 
     // Release any previous slot
     this.releaseSlot(attacker);
 
-    slot.reservedBy = attacker.x + attacker.y; // Simple ID
-    slot.reservationTime = Date.now();
+    this.attackerAssignments.set(attacker, {
+      slot,
+      targetFighter: target,
+      isQueueSlot,
+      reservationTime: Date.now()
+    });
     slot.isOccupied = false;
-
-    this.attackerAssignments.set(attacker, { slot, targetFighter: target, isQueueSlot });
 
     return true;
   }
@@ -454,7 +478,6 @@ class SlotManagerClass {
   releaseSlot(attacker: Fighter): void {
     const assignment = this.attackerAssignments.get(attacker);
     if (assignment) {
-      assignment.slot.reservedBy = null;
       assignment.slot.isOccupied = false;
       this.attackerAssignments.delete(attacker);
     }
@@ -482,24 +505,8 @@ class SlotManagerClass {
    * Clean up dead targets
    */
   cleanupDeadTarget(target: Fighter): void {
-    // Release all attack slots for this target
-    const slots = this.targetSlots.get(target);
-    if (slots) {
-      for (const slot of slots) {
-        slot.reservedBy = null;
-        slot.isOccupied = false;
-      }
-    }
+    // Release all slots for this target
     this.targetSlots.delete(target);
-
-    // Release all queue slots for this target
-    const queueSlots = this.targetQueueSlots.get(target);
-    if (queueSlots) {
-      for (const slot of queueSlots) {
-        slot.reservedBy = null;
-        slot.isOccupied = false;
-      }
-    }
     this.targetQueueSlots.delete(target);
 
     // Remove assignments to this target
@@ -515,13 +522,7 @@ class SlotManagerClass {
    */
   getAvailableSlotCount(target: Fighter, attackRange: number): number {
     const slots = this.getOrCreateSlots(target, attackRange);
-    const now = Date.now();
-
-    return slots.filter(slot => {
-      if (slot.reservedBy === null) return true;
-      if (now - slot.reservationTime > this.RESERVATION_TIMEOUT) return true;
-      return false;
-    }).length;
+    return slots.filter(slot => this.isSlotAvailable(slot)).length;
   }
 
   /**

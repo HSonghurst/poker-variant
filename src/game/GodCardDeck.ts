@@ -119,8 +119,8 @@ export class GodCardDeck {
   }
 
   reset(): void {
-    // Create a copy of all god cards
-    this.cards = [...GOD_CARDS];
+    // Create 2 copies of each god card (16 total) - enough for 6 players with 2 each
+    this.cards = [...GOD_CARDS, ...GOD_CARDS];
     this.shuffle();
   }
 

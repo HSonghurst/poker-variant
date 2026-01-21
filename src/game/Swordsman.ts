@@ -11,10 +11,10 @@ export class Swordsman extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 360;
-    this.maxHealth = 360;
-    this.baseSpeed = 0.3825;
-    this.speed = 0.3825;
+    this.health = 230;
+    this.maxHealth = 230;
+    this.baseSpeed = 0.5355;
+    this.speed = 0.5355;
     this.baseDamage = 21;
     this.damage = 21;
     this.baseAttackRange = 11;

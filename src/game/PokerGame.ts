@@ -7,12 +7,18 @@ import { GodCardDeck, type GodCard } from './GodCardDeck';
 export interface Player {
   position: PlayerPosition;
   chips: number;
+  coins: number; // Currency for bidding on modifier cards
+  health: number; // Player health (0 = eliminated)
   currentBet: number;
   holeCards: UnitCard[];
   godCards: GodCard[];
+  keptCards: UnitCard[]; // Up to 4 cards kept across rounds
+  keptModifierCards: Card[]; // Modifier cards won through bidding
+  bids: Record<number, number>; // cardIndex -> coins bid
   hasFolded: boolean;
   isAllIn: boolean;
   hasActedThisRound: boolean;
+  hasKeptCardThisRound: boolean; // Track if player has kept a card this round
 }
 
 export interface PokerGameState {
@@ -22,6 +28,8 @@ export interface PokerGameState {
   smallBlind: number;
   bigBlind: number;
   handNumber: number;
+  players: Player[];
+  // Legacy accessors for backwards compatibility
   player: Player;
   opponent: Player;
   dealerPosition: PlayerPosition;
@@ -42,11 +50,34 @@ export class PokerGame {
   private modifierDeck: Card[];
   private onStateChange: StateChangeCallback;
 
+  private static readonly POSITIONS: PlayerPosition[] = [
+    'player', 'opponent', 'topRight', 'bottomRight', 'bottomLeft', 'topLeft'
+  ];
+
   constructor(startingChips: number, onStateChange: StateChangeCallback) {
     this.onStateChange = onStateChange;
     this.unitDeck = new UnitCardDeck();
     this.godCardDeck = new GodCardDeck();
     this.modifierDeck = [];
+
+    const createPlayer = (position: PlayerPosition): Player => ({
+      position,
+      chips: startingChips,
+      coins: 10, // Everyone starts with 10 coins
+      health: 100, // Starting health
+      currentBet: 0,
+      holeCards: [],
+      godCards: [],
+      keptCards: [],
+      keptModifierCards: [],
+      bids: {},
+      hasFolded: false,
+      isAllIn: false,
+      hasActedThisRound: false,
+      hasKeptCardThisRound: false
+    });
+
+    const players = PokerGame.POSITIONS.map(pos => createPlayer(pos));
 
     this.state = {
       round: 'preflop',
@@ -55,28 +86,11 @@ export class PokerGame {
       smallBlind: 10,
       bigBlind: 20,
       handNumber: 0,
-      player: {
-        position: 'player',
-        chips: startingChips,
-        currentBet: 0,
-        holeCards: [],
-        godCards: [],
-        hasFolded: false,
-        isAllIn: false,
-        hasActedThisRound: false
-      },
-      opponent: {
-        position: 'opponent',
-        chips: startingChips,
-        currentBet: 0,
-        holeCards: [],
-        godCards: [],
-        hasFolded: false,
-        isAllIn: false,
-        hasActedThisRound: false
-      },
+      players,
+      player: players[0],
+      opponent: players[1],
       dealerPosition: 'player',
-      activePlayer: 'opponent', // Will be set properly in startNewHand
+      activePlayer: 'opponent',
       communityCards: [],
       lastAction: null,
       battleResult: null,
@@ -85,8 +99,16 @@ export class PokerGame {
     };
   }
 
+  getPlayer(position: PlayerPosition): Player {
+    return this.state.players.find(p => p.position === position)!;
+  }
+
   getState(): PokerGameState {
-    return { ...this.state };
+    return {
+      ...this.state,
+      player: this.state.players[0],
+      opponent: this.state.players[1]
+    };
   }
 
   private notify(): void {
@@ -107,37 +129,33 @@ export class PokerGame {
   }
 
   startNewHand(): void {
+    // Add 10 coins to everyone at start of each round (except first)
+    if (this.state.handNumber > 0) {
+      for (const player of this.state.players) {
+        player.coins += 10;
+      }
+    }
+
     // Reset for new hand
     this.state.handNumber++;
-    this.state.round = 'preflop';
+    this.state.round = 'draw'; // Start with draw phase
     this.state.pot = 0;
     this.state.currentBet = 0;
     this.state.communityCards = [];
     this.state.battleResult = null;
     this.state.lastAction = null;
 
-    // Reset players
-    this.state.player.holeCards = [];
-    this.state.player.godCards = [];
-    this.state.player.currentBet = 0;
-    this.state.player.hasFolded = false;
-    this.state.player.isAllIn = false;
-    this.state.player.hasActedThisRound = false;
-
-    this.state.opponent.holeCards = [];
-    this.state.opponent.godCards = [];
-    this.state.opponent.currentBet = 0;
-    this.state.opponent.hasFolded = false;
-    this.state.opponent.isAllIn = false;
-    this.state.opponent.hasActedThisRound = false;
-
-    // Alternate dealer
-    this.state.dealerPosition = this.state.dealerPosition === 'player' ? 'opponent' : 'player';
-
-    // Escalate blinds every 5 hands
-    if (this.state.handNumber > 1 && (this.state.handNumber - 1) % 5 === 0) {
-      this.state.smallBlind = Math.min(this.state.smallBlind + 10, 100);
-      this.state.bigBlind = this.state.smallBlind * 2;
+    // Reset all players (but keep keptCards and keptModifierCards across rounds)
+    for (const player of this.state.players) {
+      player.holeCards = [];
+      player.godCards = [];
+      player.bids = {}; // Reset bids each round
+      // keptCards and keptModifierCards persist across rounds
+      player.currentBet = 0;
+      player.hasFolded = false;
+      player.isAllIn = false;
+      player.hasActedThisRound = false;
+      player.hasKeptCardThisRound = false;
     }
 
     // Shuffle decks
@@ -145,37 +163,135 @@ export class PokerGame {
     this.godCardDeck.reset();
     this.shuffleModifierDeck();
 
-    // Deal hole cards (unit cards)
-    this.state.player.holeCards = this.unitDeck.deal(2);
-    this.state.opponent.holeCards = this.unitDeck.deal(2);
+    // Deal hole cards (unit cards) and god cards to all 6 players
+    for (const player of this.state.players) {
+      player.holeCards = this.unitDeck.deal(2);
+      player.godCards = this.godCardDeck.deal(2);
+    }
 
-    // Deal god cards (2 per player)
-    this.state.player.godCards = this.godCardDeck.deal(2);
-    this.state.opponent.godCards = this.godCardDeck.deal(2);
-
-    // Post blinds - in heads up, dealer posts small blind, other posts big blind
-    const sbPlayer = this.state.dealerPosition === 'player' ? this.state.player : this.state.opponent;
-    const bbPlayer = this.state.dealerPosition === 'player' ? this.state.opponent : this.state.player;
-
-    this.postBlind(sbPlayer, this.state.smallBlind);
-    this.postBlind(bbPlayer, this.state.bigBlind);
-
-    this.state.currentBet = this.state.bigBlind;
-
-    // In heads up preflop, dealer (SB) acts first
-    this.state.activePlayer = this.state.dealerPosition;
+    // Deal all 5 community cards (modifier cards) - they'll be revealed one by one
+    for (let i = 0; i < 5; i++) {
+      this.state.communityCards.push(this.dealModifierCard());
+    }
 
     this.notify();
   }
 
-  private postBlind(player: Player, amount: number): void {
-    const actualAmount = Math.min(amount, player.chips);
-    player.chips -= actualAmount;
-    player.currentBet = actualAmount;
-    this.state.pot += actualAmount;
-    if (player.chips === 0) {
-      player.isAllIn = true;
+  // Advance to next phase
+  advancePhase(): void {
+    const phaseOrder: BettingRound[] = ['draw', 'table_reveal', 'bidding', 'bid_reveal', 'battle', 'choose'];
+    const currentIndex = phaseOrder.indexOf(this.state.round);
+    if (currentIndex >= 0 && currentIndex < phaseOrder.length - 1) {
+      this.state.round = phaseOrder[currentIndex + 1];
+      this.notify();
     }
+  }
+
+  // Set phase directly
+  setPhase(phase: BettingRound): void {
+    this.state.round = phase;
+    this.notify();
+  }
+
+  // Place a bid on a community card
+  placeBid(position: PlayerPosition, cardIndex: number, amount: number): boolean {
+    const player = this.getPlayer(position);
+
+    // Calculate total coins already bid (excluding current card)
+    const otherBids = Object.entries(player.bids)
+      .filter(([idx]) => parseInt(idx) !== cardIndex)
+      .reduce((sum, [, amt]) => sum + amt, 0);
+
+    // Check if player has enough coins
+    const totalNeeded = otherBids + amount;
+    if (totalNeeded > player.coins) return false;
+
+    // Validate card index
+    if (cardIndex < 0 || cardIndex >= 5) return false;
+
+    // Set the bid (0 to remove bid)
+    if (amount === 0) {
+      delete player.bids[cardIndex];
+    } else {
+      player.bids[cardIndex] = amount;
+    }
+
+    this.notify();
+    return true;
+  }
+
+  // Get total coins a player has bid
+  getTotalBid(position: PlayerPosition): number {
+    const player = this.getPlayer(position);
+    return Object.values(player.bids).reduce((sum, amt) => sum + amt, 0);
+  }
+
+  // Get available coins (total - already bid)
+  getAvailableCoins(position: PlayerPosition): number {
+    const player = this.getPlayer(position);
+    return player.coins - this.getTotalBid(position);
+  }
+
+  // AI places random bids
+  placeAIBids(): void {
+    for (const player of this.state.players) {
+      if (player.position === 'player') continue; // Skip human player
+
+      // AI randomly bids on 1-3 cards
+      const numBids = Math.floor(Math.random() * 3) + 1;
+      const cardIndices = [0, 1, 2, 3, 4].sort(() => Math.random() - 0.5).slice(0, numBids);
+
+      let remainingCoins = player.coins;
+      for (const cardIndex of cardIndices) {
+        if (remainingCoins <= 0) break;
+        // Bid 1-5 coins randomly
+        const bid = Math.min(Math.floor(Math.random() * 5) + 1, remainingCoins);
+        player.bids[cardIndex] = bid;
+        remainingCoins -= bid;
+      }
+    }
+    this.notify();
+  }
+
+  // Reveal bids and determine winners for each card
+  revealBidsAndAwardCards(): Record<number, { winner: PlayerPosition; amount: number }> {
+    const results: Record<number, { winner: PlayerPosition; amount: number }> = {};
+
+    for (let cardIndex = 0; cardIndex < 5; cardIndex++) {
+      let highestBid = 0;
+      let winner: PlayerPosition | null = null;
+
+      // Find highest bidder for this card
+      for (const player of this.state.players) {
+        const bid = player.bids[cardIndex] || 0;
+        if (bid > highestBid) {
+          highestBid = bid;
+          winner = player.position;
+        } else if (bid === highestBid && bid > 0) {
+          // Tie - randomly pick winner (or first bidder wins)
+          if (Math.random() > 0.5) {
+            winner = player.position;
+          }
+        }
+      }
+
+      if (winner && highestBid > 0) {
+        results[cardIndex] = { winner, amount: highestBid };
+
+        // Award the card to winner
+        const winningPlayer = this.getPlayer(winner);
+        winningPlayer.keptModifierCards.push(this.state.communityCards[cardIndex]);
+      }
+    }
+
+    // Deduct coins from all players for their bids
+    for (const player of this.state.players) {
+      const totalBid = Object.values(player.bids).reduce((sum, amt) => sum + amt, 0);
+      player.coins -= totalBid;
+    }
+
+    this.notify();
+    return results;
   }
 
   private getActivePlayerObj(): Player {
@@ -464,5 +580,160 @@ export class PokerGame {
 
   isBattlePhase(): boolean {
     return this.state.round === 'battle';
+  }
+
+  // Keep a hole card (add to keptCards collection)
+  keepCard(position: PlayerPosition, holeCardIndex: number, replaceIndex?: number): boolean {
+    const player = this.getPlayer(position);
+
+    // Can only keep once per round
+    if (player.hasKeptCardThisRound) return false;
+
+    // Validate hole card index
+    if (holeCardIndex < 0 || holeCardIndex >= player.holeCards.length) return false;
+
+    const cardToKeep = player.holeCards[holeCardIndex];
+
+    if (player.keptCards.length < 4) {
+      // Still have room, just add it
+      player.keptCards.push(cardToKeep);
+      player.hasKeptCardThisRound = true;
+      this.notify();
+      return true;
+    } else if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < 4) {
+      // Replace an existing kept card
+      player.keptCards[replaceIndex] = cardToKeep;
+      player.hasKeptCardThisRound = true;
+      this.notify();
+      return true;
+    }
+
+    return false;
+  }
+
+  // Check if player can keep a card (only after battle/choose phase)
+  canKeepCard(position: PlayerPosition): boolean {
+    const player = this.getPlayer(position);
+    return !player.hasKeptCardThisRound && (this.state.round === 'hand_complete' || this.state.round === 'choose');
+  }
+
+  // AI players automatically keep a random card
+  makeAIKeepCards(): void {
+    const aiPositions: PlayerPosition[] = ['opponent', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
+
+    for (const position of aiPositions) {
+      const player = this.getPlayer(position);
+
+      // Skip if already kept a card this round or no hole cards
+      if (player.hasKeptCardThisRound || player.holeCards.length === 0) continue;
+
+      // Pick a random hole card to keep
+      const holeCardIndex = Math.floor(Math.random() * player.holeCards.length);
+
+      if (player.keptCards.length < 4) {
+        // Still have room, just keep it
+        this.keepCard(position, holeCardIndex);
+      } else {
+        // Replace a random kept card
+        const replaceIndex = Math.floor(Math.random() * 4);
+        this.keepCard(position, holeCardIndex, replaceIndex);
+      }
+    }
+  }
+
+  // Check if keeper slots are full (need to replace)
+  isKeeperSlotsFull(position: PlayerPosition): boolean {
+    const player = this.getPlayer(position);
+    return player.keptCards.length >= 4;
+  }
+
+  // Buy a community card (costs 2 coins)
+  buyModifierCard(position: PlayerPosition, cardIndex: number): boolean {
+    const player = this.getPlayer(position);
+    const cost = 2;
+
+    // Check if player has enough coins
+    if (player.coins < cost) return false;
+
+    // Check if card index is valid
+    if (cardIndex < 0 || cardIndex >= this.state.communityCards.length) return false;
+
+    const card = this.state.communityCards[cardIndex];
+
+    // Check if already bought this card
+    if (player.keptModifierCards.some(c => c.id === card.id)) return false;
+
+    // Buy the card
+    player.coins -= cost;
+    player.keptModifierCards.push(card);
+    this.notify();
+    return true;
+  }
+
+  // Check if player can buy a modifier card
+  canBuyModifierCard(position: PlayerPosition, cardIndex: number): boolean {
+    const player = this.getPlayer(position);
+    if (player.coins < 2) return false;
+    if (cardIndex < 0 || cardIndex >= this.state.communityCards.length) return false;
+    const card = this.state.communityCards[cardIndex];
+    // Can't buy same card twice
+    if (player.keptModifierCards.some(c => c.id === card.id)) return false;
+    return this.state.round === 'hand_complete';
+  }
+
+  // Get player's coins
+  getCoins(position: PlayerPosition): number {
+    return this.getPlayer(position).coins;
+  }
+
+  // Get player's health
+  getHealth(position: PlayerPosition): number {
+    return this.getPlayer(position).health;
+  }
+
+  // Apply damage based on battle rankings
+  // rankings[0] = 1st place (winner, no damage), rankings[5] = last place (most damage)
+  // Damage scales with round number: baseDamage * (roundNumber ^ 1.3)
+  applyBattleDamage(rankings: PlayerPosition[]): void {
+    const roundNumber = this.state.handNumber;
+    const DAMAGE_EXPONENT = 1.3;
+    const roundMultiplier = Math.pow(roundNumber, DAMAGE_EXPONENT);
+
+    // Base damage by position: 1st=0, 2nd=1, 3rd=2, 4th=3, 5th=4, 6th=5
+    for (let i = 0; i < rankings.length; i++) {
+      const position = rankings[i];
+      const player = this.getPlayer(position);
+
+      // 1st place (index 0) takes no damage
+      if (i === 0) continue;
+
+      const baseDamage = i; // 2nd place = 1, 3rd = 2, etc.
+      const totalDamage = Math.round(baseDamage * roundMultiplier);
+
+      player.health = Math.max(0, player.health - totalDamage);
+    }
+
+    this.notify();
+  }
+
+  // Check if a player is eliminated (health <= 0)
+  isPlayerEliminated(position: PlayerPosition): boolean {
+    return this.getPlayer(position).health <= 0;
+  }
+
+  // Get all eliminated players
+  getEliminatedPlayers(): PlayerPosition[] {
+    return this.state.players
+      .filter(p => p.health <= 0)
+      .map(p => p.position);
+  }
+
+  // Check if game should end (only one player remaining)
+  checkHealthGameOver(): PlayerPosition | null {
+    const alivePlayers = this.state.players.filter(p => p.health > 0);
+    if (alivePlayers.length === 1) {
+      return alivePlayers[0].position;
+    }
+    return null;
   }
 }

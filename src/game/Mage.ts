@@ -30,14 +30,14 @@ export class Mage extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 40; // Very weak
-    this.maxHealth = 40;
-    this.baseSpeed = 0.08; // Very slow
-    this.speed = 0.08;
+    this.health = 26; // Very weak
+    this.maxHealth = 26;
+    this.baseSpeed = 0.112; // Very slow
+    this.speed = 0.112;
     this.baseDamage = 25; // High damage per shot
     this.damage = 25;
-    this.baseAttackRange = 260; // 4x archer range (65 * 4)
-    this.attackRange = 260;
+    this.baseAttackRange = 130; // 2x archer range (65 * 2)
+    this.attackRange = 130;
     this.baseAttackCooldown = 100; // Not used, charge system instead
     this.attackCooldown = 100;
   }

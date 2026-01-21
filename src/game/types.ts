@@ -22,7 +22,9 @@ export interface FighterConfig {
   x: number;
 }
 
-// Poker types
-export type BettingRound = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'positioning' | 'battle' | 'hand_complete';
+// Poker types - new flow: draw -> table_reveal -> bidding -> bid_reveal -> battle -> choose
+export type GamePhase = 'draw' | 'table_reveal' | 'bidding' | 'bid_reveal' | 'battle' | 'choose';
+// Keep old type for backwards compatibility during refactor
+export type BettingRound = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'positioning' | 'battle' | 'hand_complete' | GamePhase;
 export type PlayerAction = 'fold' | 'check' | 'call' | 'raise' | 'all_in';
-export type PlayerPosition = 'player' | 'opponent';
+export type PlayerPosition = 'player' | 'opponent' | 'topRight' | 'bottomRight' | 'bottomLeft' | 'topLeft';

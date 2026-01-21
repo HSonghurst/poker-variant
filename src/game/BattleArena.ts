@@ -27,7 +27,15 @@ export interface BattleConfig {
   topRightUnits?: UnitCard[];     // topRight team (optional)
   bottomRightUnits?: UnitCard[];  // bottomRight team (optional)
   bottomLeftUnits?: UnitCard[];   // bottomLeft team (optional)
-  modifiers: Card[];
+  modifiers: Card[];              // Shared modifiers (community cards) - apply to all
+  teamModifiers?: {               // Per-team modifiers (kept cards) - apply only to that team
+    player?: Card[];
+    opponent?: Card[];
+    topLeft?: Card[];
+    topRight?: Card[];
+    bottomLeft?: Card[];
+    bottomRight?: Card[];
+  };
   playerGodCards: GodCard[];
   opponentGodCards: GodCard[];
 }
@@ -67,6 +75,7 @@ export class BattleArena {
   private teamKillsByType: Map<Team, Map<string, number>> = new Map(); // Kills by unit type per team
   private lastAliveCount: Map<Team, number> = new Map(); // For tracking kills
   private sharedModifiers: TeamModifiers;
+  private perTeamModifiers: Map<Team, TeamModifiers> = new Map();
   private battleSummary: BattleSummary | null = null;
   private running: boolean = false;
   private onBattleEnd: BattleEndCallback;
@@ -74,6 +83,9 @@ export class BattleArena {
   private maxBattleDuration: number = 120000; // 120 seconds max for large armies
   private lastFrameTime: number = 0;
   private animationFrameId: number | null = null;
+  private lastAggroIncreaseTime: number = 0;
+  private readonly AGGRO_INCREASE_INTERVAL: number = 10000; // 10 seconds
+  private readonly AGGRO_INCREASE_MULTIPLIER: number = 1.25; // 25% increase
 
   // Hex grid
   private hexGrid: HexGrid;
@@ -170,6 +182,7 @@ export class BattleArena {
     this.fighterHexes.clear();
     this.hexGrid.clearOccupied();
     this.sharedModifiers = new TeamModifiers();
+    this.perTeamModifiers.clear();
     this.godPowerEffects = [];
     this.godCardCooldowns.clear();
     this.selectedGodCard = null;
@@ -180,18 +193,49 @@ export class BattleArena {
     // Store god cards (AI god card usage not yet implemented)
     this.playerGodCards = config.playerGodCards || [];
 
-    // Apply all community modifier cards to shared modifiers
+    // Apply all community modifier cards to shared modifiers (apply to everyone)
     for (const card of config.modifiers) {
       this.sharedModifiers.applyCard(card);
     }
 
+    // Apply per-team modifiers (only apply to that team's units)
+    if (config.teamModifiers) {
+      // NOTE: 'player' position maps to 'red' team (bottom, labeled "YOU")
+      const teamMapping: Record<string, Team> = {
+        player: 'red',
+        opponent: 'blue',
+        topLeft: 'green',
+        topRight: 'pink',
+        bottomLeft: 'orange',
+        bottomRight: 'purple'
+      };
+
+      for (const [position, cards] of Object.entries(config.teamModifiers)) {
+        if (cards && cards.length > 0) {
+          const team = teamMapping[position];
+          if (team) {
+            const teamMods = new TeamModifiers();
+            for (const card of cards) {
+              teamMods.applyCard(card);
+              console.log(`[BattleArena] Applied card "${card.name}" to team ${team}`);
+            }
+            console.log(`[BattleArena] Team ${team} modifiers:`, {
+              archerFanAbility: teamMods.archerFanAbility,
+              swordsmanSweepAbility: teamMods.swordsmanSweepAbility
+            });
+            this.perTeamModifiers.set(team, teamMods);
+          }
+        }
+      }
+    }
+
     // Units per card by type
     const UNITS_PER_TYPE: Record<string, number> = {
-      swordsman: 20,
-      mage: 10,
-      knight: 20,
-      archer: 20,
-      healer: 10
+      swordsman: 10,
+      mage: 5,
+      knight: 10,
+      archer: 10,
+      healer: 5
     };
     const UNIT_SPACING = 10; // Spacing for units in group
     const FORMATION_WIDTH = 5; // Units per row
@@ -233,7 +277,12 @@ export class BattleArena {
         const fighter = this.createFighterByType(unitType, team, x, y);
         fighter.arenaCenterX = this.arenaCenterX;
         fighter.arenaCenterY = this.arenaCenterY;
-        fighter.applyModifiers(this.sharedModifiers);
+        // Combine shared modifiers (community cards) with team-specific modifiers (kept cards)
+        const teamMods = this.perTeamModifiers.get(team);
+        const combinedMods = teamMods
+          ? this.sharedModifiers.combine(teamMods)
+          : this.sharedModifiers;
+        fighter.applyModifiers(combinedMods);
 
         // Set group offset for formation maintenance
         fighter.groupOffsetX = gridX;
@@ -658,6 +707,8 @@ export class BattleArena {
     this.running = true;
     this.battleStartTime = Date.now();
     this.lastFrameTime = performance.now();
+    this.lastAggroIncreaseTime = Date.now();
+    Fighter.resetAggroRange(); // Reset aggro range at battle start
 
     this.gameLoop();
   }
@@ -689,6 +740,13 @@ export class BattleArena {
   };
 
   private update(deltaTime: number): void {
+    // Increase aggro range every 10 seconds
+    const now = Date.now();
+    if (now - this.lastAggroIncreaseTime >= this.AGGRO_INCREASE_INTERVAL) {
+      Fighter.increaseAggroRange(this.AGGRO_INCREASE_MULTIPLIER);
+      this.lastAggroIncreaseTime = now;
+    }
+
     // In a 6-way battle, everyone fights everyone else
     const allTeams: Team[] = ['blue', 'purple', 'pink', 'red', 'orange', 'green'];
 
@@ -699,13 +757,33 @@ export class BattleArena {
       aliveBeforeUpdate.set(team, new Set(fighters.filter(f => !f.isDead)));
     }
 
-    // Greedy slot assignment - group attackers by target and assign closest-first
+    // Collect all fighters and build enemy lists per team
     const allFighters: Fighter[] = [];
+    const enemiesByTeam = new Map<Team, Fighter[]>();
     for (const team of allTeams) {
-      allFighters.push(...(this.teams.get(team) || []));
+      const fighters = this.teams.get(team) || [];
+      allFighters.push(...fighters);
+
+      // Build enemy list for this team (everyone not on this team)
+      const enemies: Fighter[] = [];
+      for (const otherTeam of allTeams) {
+        if (otherTeam !== team) {
+          enemies.push(...(this.teams.get(otherTeam) || []));
+        }
+      }
+      enemiesByTeam.set(team, enemies);
     }
 
-    // Group attackers by their current target
+    // STEP 1: Update targets for ALL fighters FIRST (before slot assignment)
+    // This ensures slot grouping uses fresh target info
+    for (const fighter of allFighters) {
+      if (!fighter.isDead) {
+        const enemies = enemiesByTeam.get(fighter.team) || [];
+        fighter.findTarget(enemies);
+      }
+    }
+
+    // STEP 2: Group attackers by their FRESH targets
     const attackersByTarget = new Map<Fighter, Fighter[]>();
     for (const fighter of allFighters) {
       if (fighter.isDead || !fighter.target || fighter.target.isDead) continue;
@@ -714,27 +792,21 @@ export class BattleArena {
       attackersByTarget.set(fighter.target, group);
     }
 
-    // Assign slots greedily for each target (closest units pick first)
+    // STEP 3: Assign slots greedily for each target (closest units pick first)
     for (const [target, attackers] of attackersByTarget) {
       SlotManager.assignSlotsGreedy(attackers, target, allFighters);
     }
 
-    // Update all fighters
+    // STEP 4: Update all fighters (skip target finding since we already did it)
     for (const team of allTeams) {
       const fighters = this.teams.get(team) || [];
       if (fighters.length === 0) continue;
 
-      // Get all enemies (everyone not on this team)
-      const enemies: Fighter[] = [];
-      for (const otherTeam of allTeams) {
-        if (otherTeam !== team) {
-          enemies.push(...(this.teams.get(otherTeam) || []));
-        }
-      }
+      const enemies = enemiesByTeam.get(team) || [];
 
       for (const fighter of fighters) {
         if (!fighter.isDead) {
-          fighter.update(enemies, deltaTime, fighters);
+          fighter.update(enemies, deltaTime, fighters, true); // skipTargetFind = true
         }
       }
     }
@@ -1041,6 +1113,31 @@ export class BattleArena {
     this.drawBattleSummary();
   }
 
+  // Get battle rankings as player positions (1st place = winner, 6th = worst)
+  getBattleRankings(): PlayerPosition[] {
+    if (!this.battleSummary) return [];
+
+    // Must match the teamMapping in setupBattle()
+    const teamToPosition: Record<Team, PlayerPosition> = {
+      'red': 'player',
+      'blue': 'opponent',
+      'green': 'topLeft',
+      'pink': 'topRight',
+      'orange': 'bottomLeft',
+      'purple': 'bottomRight'
+    };
+
+    // Sort by units remaining (primary), then kills (secondary)
+    const sorted = [...this.battleSummary.teams].sort((a, b) => {
+      if (b.unitsRemaining !== a.unitsRemaining) {
+        return b.unitsRemaining - a.unitsRemaining;
+      }
+      return b.totalKills - a.totalKills;
+    });
+
+    return sorted.map(summary => teamToPosition[summary.team]);
+  }
+
   private drawBattleSummary(): void {
     if (!this.battleSummary) return;
 
@@ -1185,7 +1282,7 @@ export class BattleArena {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 18px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('REMATCH', this.canvas.width / 2, btnY + 29);
+    ctx.fillText('CONTINUE', this.canvas.width / 2, btnY + 29);
   }
 
   getRematchButtonBounds(): { x: number; y: number; width: number; height: number } {
@@ -1317,6 +1414,7 @@ export class BattleArena {
         break;
       case 'shield_wall':
         this.executeShieldWall();
+        SoundManager.playShield();
         break;
       case 'earthquake':
         this.executeEarthquake(x, y, card.radius || 90);

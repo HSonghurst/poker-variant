@@ -212,7 +212,7 @@ export class Wraith extends Fighter {
     }
   }
 
-  protected findTarget(enemies: Fighter[]): void {
+  findTarget(enemies: Fighter[]): void {
     const aliveEnemies = enemies.filter(e => !e.isDead);
     if (aliveEnemies.length === 0) {
       this.target = null;

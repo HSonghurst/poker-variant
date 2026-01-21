@@ -372,6 +372,170 @@ class SoundManagerClass {
     osc.stop(ctx.currentTime + 0.08);
   }
 
+  // Shield ability - magical barrier sound (different from taunt)
+  playShield(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+
+    // High shimmer tone
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.frequency.setValueAtTime(1200, ctx.currentTime);
+    osc1.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
+    osc1.type = 'sine';
+    gain1.gain.setValueAtTime(this.masterVolume * 0.15, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.3);
+
+    // Low resonance
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.frequency.setValueAtTime(150, ctx.currentTime);
+    osc2.frequency.setValueAtTime(180, ctx.currentTime + 0.15);
+    osc2.type = 'triangle';
+    gain2.gain.setValueAtTime(this.masterVolume * 0.2, ctx.currentTime);
+    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.25);
+  }
+
+  // Card draw - soft whoosh
+  playCardDraw(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    const noise = this.createNoise(ctx, 0.15);
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(2000, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(4000, ctx.currentTime + 0.1);
+    filter.Q.value = 1;
+
+    gain.gain.setValueAtTime(this.masterVolume * 0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+  }
+
+  // Card flip - paper snap
+  playCardFlip(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+
+    // Quick snap
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.05);
+    osc.type = 'square';
+
+    gain.gain.setValueAtTime(this.masterVolume * 0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.06);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.06);
+  }
+
+  // Bid place - coin clink
+  playBidPlace(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.frequency.setValueAtTime(2500, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1800, ctx.currentTime + 0.08);
+    osc.type = 'sine';
+
+    gain.gain.setValueAtTime(this.masterVolume * 0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  }
+
+  // Bid win - triumphant ding
+  playBidWin(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+
+    // Two-note chime
+    const notes = [880, 1320]; // A5, E6
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const startTime = ctx.currentTime + i * 0.1;
+      osc.frequency.setValueAtTime(freq, startTime);
+      osc.type = 'sine';
+
+      gain.gain.setValueAtTime(this.masterVolume * 0.2, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2);
+
+      osc.start(startTime);
+      osc.stop(startTime + 0.2);
+    });
+  }
+
+  // Round start - dramatic intro
+  playRoundStart(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+
+    // Rising sweep
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
+    osc.type = 'sawtooth';
+
+    gain.gain.setValueAtTime(this.masterVolume * 0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  }
+
+  // Button click - short tick sound
+  playButtonClick(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.05);
+    osc.type = 'square';
+
+    gain.gain.setValueAtTime(this.masterVolume * 0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.05);
+  }
+
   // Helper to create white noise
   private createNoise(ctx: AudioContext, duration: number): AudioBufferSourceNode {
     const bufferSize = ctx.sampleRate * duration;

@@ -16,6 +16,22 @@ export interface StatusEffects {
 }
 
 export abstract class Fighter {
+  // Global aggro range multiplier - increases over time during battle
+  private static aggroRangeMultiplier: number = 1.0;
+  private static readonly BASE_AGGRO_RANGE: number = 121;
+
+  static getAggroRange(): number {
+    return Fighter.BASE_AGGRO_RANGE * Fighter.aggroRangeMultiplier;
+  }
+
+  static increaseAggroRange(multiplier: number): void {
+    Fighter.aggroRangeMultiplier *= multiplier;
+  }
+
+  static resetAggroRange(): void {
+    Fighter.aggroRangeMultiplier = 1.0;
+  }
+
   x: number;
   y: number;
   team: Team;
@@ -74,10 +90,10 @@ export abstract class Fighter {
     this.x = x;
     // Default Y position (will be overridden in BattleArena)
     this.y = canvasHeight / 2;
-    this.health = 100;
-    this.maxHealth = 100;
-    this.baseSpeed = 1;
-    this.speed = 1;
+    this.health = 80;
+    this.maxHealth = 80;
+    this.baseSpeed = 1.4;
+    this.speed = 1.4;
     this.baseDamage = 5;
     this.damage = 5;
     this.baseAttackRange = 40;
@@ -92,6 +108,12 @@ export abstract class Fighter {
   applyModifiers(modifiers: TeamModifiers): void {
     this.modifiers = modifiers;
     const type = this.getType();
+    if (modifiers.archerFanAbility || modifiers.swordsmanSweepAbility) {
+      console.log(`[Fighter] ${type} received modifiers:`, {
+        archerFanAbility: modifiers.archerFanAbility,
+        swordsmanSweepAbility: modifiers.swordsmanSweepAbility
+      });
+    }
 
     // Apply health multiplier
     const healthMult = modifiers.getHealthMultiplier(type);
@@ -115,7 +137,7 @@ export abstract class Fighter {
   private nearbyAllies: Fighter[] = [];
   private nearbyEnemies: Fighter[] = [];
 
-  update(enemies: Fighter[], deltaTime: number, allies?: Fighter[]): void {
+  update(enemies: Fighter[], deltaTime: number, allies?: Fighter[], skipTargetFind: boolean = false): void {
     if (this.isDead) {
       // Release any slot we had when we die
       SlotManager.releaseSlot(this);
@@ -147,7 +169,10 @@ export abstract class Fighter {
       this.animationTimer = 0;
     }
 
-    this.findTarget(enemies);
+    // Skip target finding if already done in batch (BattleArena pre-finds targets)
+    if (!skipTargetFind) {
+      this.findTarget(enemies);
+    }
 
     // No target - idle state, move forward
     if (!this.target || this.target.isDead) {
@@ -194,30 +219,53 @@ export abstract class Fighter {
         this.moveToSlot(assignment.slot);
       }
     } else {
-      // No slot available - try opportunistic attack or wait
-      const opportunisticTarget = findEnemyInRange(this, enemies);
-
-      if (opportunisticTarget) {
-        // Attack any enemy in range
-        this.attackState = AttackState.OPPORTUNISTIC;
-        this.attack(opportunisticTarget, enemies);
-        this.applySeparation();
+      // No slot available - try to get one while we wait
+      const allUnits = [...this.nearbyAllies, ...this.nearbyEnemies];
+      const slot = SlotManager.findBestSlot(this, this.target, allUnits);
+      if (slot) {
+        SlotManager.reserveSlot(this, slot, this.target, false);
+        assignment = SlotManager.getAssignment(this);
       } else {
-        // No enemies in range, wait then move
-        const wasWaiting = this.attackState === AttackState.WAITING;
-        this.attackState = AttackState.WAITING;
-
-        if (!wasWaiting) {
-          // Just started waiting - record the time
-          this.waitingStartTime = Date.now();
+        // Try queue slot as fallback
+        const queueSlots = SlotManager.getOrCreateQueueSlots(this.target, this.attackRange);
+        for (const qSlot of queueSlots) {
+          if (SlotManager.reserveSlot(this, qSlot, this.target, true)) {
+            assignment = SlotManager.getAssignment(this);
+            break;
+          }
         }
+      }
 
-        const waitDuration = Date.now() - this.waitingStartTime;
-        if (waitDuration >= 2000) {
-          // Waited long enough, move towards the fight
-          this.moveForward();
+      // If we got a slot, use it
+      if (assignment) {
+        this.attackState = AttackState.MOVING_TO_SLOT;
+        this.moveToSlot(assignment.slot);
+      } else {
+        // Still no slot - try opportunistic attack or wait
+        const opportunisticTarget = findEnemyInRange(this, enemies);
+
+        if (opportunisticTarget) {
+          // Attack any enemy in range
+          this.attackState = AttackState.OPPORTUNISTIC;
+          this.attack(opportunisticTarget, enemies);
+          this.applySeparation();
+        } else {
+          // No enemies in range, wait then move
+          const wasWaiting = this.attackState === AttackState.WAITING;
+          this.attackState = AttackState.WAITING;
+
+          if (!wasWaiting) {
+            // Just started waiting - record the time
+            this.waitingStartTime = Date.now();
+          }
+
+          const waitDuration = Date.now() - this.waitingStartTime;
+          if (waitDuration >= 2000) {
+            // Waited long enough, move towards the fight
+            this.moveForward();
+          }
+          // Otherwise stay in place
         }
-        // Otherwise stay in place
       }
     }
   }
@@ -269,7 +317,7 @@ export abstract class Fighter {
     }
   }
 
-  protected findTarget(enemies: Fighter[]): void {
+  findTarget(enemies: Fighter[]): void {
     // If we have a taunter that's still alive, we must attack them
     if (this.taunter && !this.taunter.isDead) {
       this.target = this.taunter;
@@ -283,93 +331,23 @@ export abstract class Fighter {
       return;
     }
 
-    // Aggro range - only target enemies within this distance
-    const aggroRange = 121;
-    // Very close range - always allow targeting regardless of focused team (150% of attack range)
-    const closeRange = this.attackRange * 1.5;
+    // Aggro range - only target enemies within this distance (increases over time)
+    const aggroRange = Fighter.getAggroRange();
 
-    // Group enemies by team and calculate average distance to each team
-    const teamDistances = new Map<Team, { totalDist: number; count: number; enemies: Fighter[] }>();
-
-    for (const enemy of aliveEnemies) {
-      const dist = this.getDistanceTo(enemy);
-      if (dist <= aggroRange) {
-        if (!teamDistances.has(enemy.team)) {
-          teamDistances.set(enemy.team, { totalDist: 0, count: 0, enemies: [] });
-        }
-        const teamData = teamDistances.get(enemy.team)!;
-        teamData.totalDist += dist;
-        teamData.count++;
-        teamData.enemies.push(enemy);
-      }
-    }
-
-    if (teamDistances.size === 0) {
-      this.target = null;
-      return;
-    }
-
-    // Count how many allies are focusing on each team
-    const allyFocusCounts = new Map<Team, number>();
-    for (const ally of this.nearbyAllies) {
-      if (ally.isDead || ally === this) continue;
-      if (ally.focusedEnemyTeam) {
-        allyFocusCounts.set(
-          ally.focusedEnemyTeam,
-          (allyFocusCounts.get(ally.focusedEnemyTeam) || 0) + 1
-        );
-      }
-    }
-
-    // Find the closest team (by average distance), with bias toward teams allies are targeting
-    // Each ally targeting a team reduces its "effective distance" by 15
-    const ALLY_FOCUS_BIAS = 15;
-    let closestTeam: Team | null = null;
-    let closestTeamScore = Infinity;
-
-    for (const [team, data] of teamDistances) {
-      const avgDist = data.totalDist / data.count;
-      const allyBonus = (allyFocusCounts.get(team) || 0) * ALLY_FOCUS_BIAS;
-      const effectiveScore = avgDist - allyBonus;
-      if (effectiveScore < closestTeamScore) {
-        closestTeamScore = effectiveScore;
-        closestTeam = team;
-      }
-    }
-
-    this.focusedEnemyTeam = closestTeam;
-
-    // Find target: prefer focused team, but allow very close enemies from any team
+    // Simple targeting: find the closest enemy within aggro range
     let closest: Fighter | null = null;
     let closestDist = Infinity;
-    let closestFromFocusedTeam: Fighter | null = null;
-    let closestDistFromFocusedTeam = Infinity;
 
     for (const enemy of aliveEnemies) {
       const dist = this.getDistanceTo(enemy);
-      if (dist > aggroRange) continue;
-
-      // Track closest enemy from focused team
-      if (enemy.team === this.focusedEnemyTeam && dist < closestDistFromFocusedTeam) {
-        closestFromFocusedTeam = enemy;
-        closestDistFromFocusedTeam = dist;
-      }
-
-      // Track closest enemy overall (for very close range override)
-      if (dist < closestDist) {
+      if (dist <= aggroRange && dist < closestDist) {
         closest = enemy;
         closestDist = dist;
       }
     }
 
-    // Use closest enemy if very close, otherwise prefer focused team target
-    if (closest && closestDist <= closeRange) {
-      this.target = closest;
-    } else if (closestFromFocusedTeam) {
-      this.target = closestFromFocusedTeam;
-    } else {
-      this.target = closest;
-    }
+    this.target = closest;
+    this.focusedEnemyTeam = closest?.team || null;
   }
 
   protected getDistanceTo(other: Fighter): number {

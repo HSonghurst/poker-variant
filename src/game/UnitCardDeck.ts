@@ -49,9 +49,9 @@ export class UnitCardDeck {
     const types: FighterType[] = ['knight', 'swordsman', 'archer', 'mage', 'healer'];
     let id = 1;
 
-    // Create 2 cards of each unit type (10 total)
+    // Create 3 cards of each unit type (15 total) - enough for 6 players with 2 each
     for (const type of types) {
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 3; i++) {
         const def = UNIT_DEFINITIONS[type];
         this.cards.push({
           id: id++,

@@ -24,10 +24,10 @@ export class Healer extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 140;
-    this.maxHealth = 140;
-    this.baseSpeed = 0.4;
-    this.speed = 0.4;
+    this.health = 90;
+    this.maxHealth = 90;
+    this.baseSpeed = 0.56;
+    this.speed = 0.56;
     this.baseDamage = 2;
     this.damage = 2;
     this.baseAttackRange = 14;
@@ -131,7 +131,7 @@ export class Healer extends Fighter {
         this.y += sepY * this.speed * 0.5;
       }
     } else if (allies && allies.length > 0) {
-      // No wounded allies - stay near the group center but behind the front line
+      // No wounded allies - stay near the group center but slightly behind the front line
       const aliveNonHealerAllies = allies.filter(a => !a.isDead && a !== this && a.getType() !== 'healer');
       if (aliveNonHealerAllies.length > 0) {
         // Calculate average ally position
@@ -143,22 +143,33 @@ export class Healer extends Fighter {
         avgX /= aliveNonHealerAllies.length;
         avgY /= aliveNonHealerAllies.length;
 
-        // Stay slightly behind the group (towards our base)
-        const backOffset = this.team === 'blue' ? -30 : 30;
-        const targetY = avgY + backOffset;
+        // In hexagonal arena, "behind" means away from arena center
+        // Calculate direction from arena center to group center
+        const fromCenterX = avgX - this.arenaCenterX;
+        const fromCenterY = avgY - this.arenaCenterY;
+        const fromCenterDist = Math.sqrt(fromCenterX * fromCenterX + fromCenterY * fromCenterY);
 
-        let dx = avgX - this.x;
+        // Target position: stay 25 units behind the group (further from center)
+        let targetX = avgX;
+        let targetY = avgY;
+        if (fromCenterDist > 10) {
+          const backOffset = 25;
+          targetX = avgX + (fromCenterX / fromCenterDist) * backOffset;
+          targetY = avgY + (fromCenterY / fromCenterDist) * backOffset;
+        }
+
+        let dx = targetX - this.x;
         let dy = targetY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > 20) {
-          // Blend movement with separation
-          let moveX = (dx / dist) * 0.5 + sepX * 2;
-          let moveY = (dy / dist) * 0.5 + sepY * 2;
+        if (dist > 15) {
+          // Follow the group - use full speed to keep up
+          let moveX = (dx / dist) + sepX * 2;
+          let moveY = (dy / dist) + sepY * 2;
           const moveMag = Math.sqrt(moveX * moveX + moveY * moveY);
           if (moveMag > 0) {
-            this.x += (moveX / moveMag) * this.speed * 0.5;
-            this.y += (moveY / moveMag) * this.speed * 0.5;
+            this.x += (moveX / moveMag) * this.speed;
+            this.y += (moveY / moveMag) * this.speed;
           }
         } else {
           // Close enough, just apply separation

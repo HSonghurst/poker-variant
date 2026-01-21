@@ -393,4 +393,63 @@ export class TeamModifiers {
   getSpawnWeight(type: FighterType): number {
     return this.spawnWeights.get(type) || 1;
   }
+
+  /**
+   * Combine this modifier set with another, returning a new combined set.
+   * All multipliers are multiplied together.
+   */
+  combine(other: TeamModifiers): TeamModifiers {
+    const combined = new TeamModifiers();
+
+    // Combine damage multipliers
+    const allDamageTypes = new Set([...this.damageMultiplier.keys(), ...other.damageMultiplier.keys()]);
+    for (const type of allDamageTypes) {
+      combined.damageMultiplier.set(type, (this.damageMultiplier.get(type) || 1) * (other.damageMultiplier.get(type) || 1));
+    }
+
+    // Combine health multipliers
+    const allHealthTypes = new Set([...this.healthMultiplier.keys(), ...other.healthMultiplier.keys()]);
+    for (const type of allHealthTypes) {
+      combined.healthMultiplier.set(type, (this.healthMultiplier.get(type) || 1) * (other.healthMultiplier.get(type) || 1));
+    }
+
+    // Combine range multipliers
+    const allRangeTypes = new Set([...this.rangeMultiplier.keys(), ...other.rangeMultiplier.keys()]);
+    for (const type of allRangeTypes) {
+      combined.rangeMultiplier.set(type, (this.rangeMultiplier.get(type) || 1) * (other.rangeMultiplier.get(type) || 1));
+    }
+
+    // Combine spawn weights
+    const allSpawnTypes = new Set([...this.spawnWeights.keys(), ...other.spawnWeights.keys()]);
+    for (const type of allSpawnTypes) {
+      combined.spawnWeights.set(type, (this.spawnWeights.get(type) || 1) * (other.spawnWeights.get(type) || 1));
+    }
+
+    // Combine scalar multipliers
+    combined.speedMultiplier = this.speedMultiplier * other.speedMultiplier;
+    combined.attackSpeedMultiplier = this.attackSpeedMultiplier * other.attackSpeedMultiplier;
+    combined.fireDoTMultiplier = this.fireDoTMultiplier * other.fireDoTMultiplier;
+    combined.poisonDoTMultiplier = this.poisonDoTMultiplier * other.poisonDoTMultiplier;
+    combined.frostDurationMultiplier = this.frostDurationMultiplier * other.frostDurationMultiplier;
+    combined.voidDoTMultiplier = this.voidDoTMultiplier * other.voidDoTMultiplier;
+    combined.lifestealPercent = this.lifestealPercent * other.lifestealPercent;
+    combined.splashMultiplier = this.splashMultiplier * other.splashMultiplier;
+    combined.critChance = this.critChance * other.critChance;
+    combined.thornsMultiplier = this.thornsMultiplier * other.thornsMultiplier;
+    combined.regenMultiplier = this.regenMultiplier * other.regenMultiplier;
+    combined.healPowerMultiplier = this.healPowerMultiplier * other.healPowerMultiplier;
+    combined.healAoeMultiplier = this.healAoeMultiplier * other.healAoeMultiplier;
+
+    // Combine boolean unlocks (OR)
+    combined.archerPoisonOnHit = this.archerPoisonOnHit || other.archerPoisonOnHit;
+    combined.swordsmanFireOnHit = this.swordsmanFireOnHit || other.swordsmanFireOnHit;
+    combined.knightFrostOnHit = this.knightFrostOnHit || other.knightFrostOnHit;
+    combined.archerFanAbility = this.archerFanAbility || other.archerFanAbility;
+    combined.swordsmanSweepAbility = this.swordsmanSweepAbility || other.swordsmanSweepAbility;
+    combined.knightTauntAbility = this.knightTauntAbility || other.knightTauntAbility;
+    combined.mageVoidEruptionAbility = this.mageVoidEruptionAbility || other.mageVoidEruptionAbility;
+    combined.healerPurifyAbility = this.healerPurifyAbility || other.healerPurifyAbility;
+
+    return combined;
+  }
 }

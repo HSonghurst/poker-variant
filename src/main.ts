@@ -3,8 +3,8 @@ import { inject } from '@vercel/analytics';
 import { PokerGame, type PokerGameState } from './game/PokerGame';
 import { PokerRenderer } from './game/PokerRenderer';
 import { BattleArena } from './game/BattleArena';
-import { AIOpponent } from './game/AIOpponent';
 import { GOD_CARDS } from './game/GodCardDeck';
+import { SoundManager } from './game/SoundManager';
 import type { PlayerPosition } from './game/types';
 import type { UnitCard } from './game/UnitCardDeck';
 
@@ -41,7 +41,6 @@ const playAgainBtn = document.getElementById('play-again-btn') as HTMLButtonElem
 let pokerGame: PokerGame | null = null;
 let pokerRenderer: PokerRenderer | null = null;
 let battleArena: BattleArena | null = null;
-const aiOpponent = new AIOpponent(0.5);
 
 const STARTING_CHIPS = 500;
 
@@ -65,6 +64,16 @@ function render(): void {
     }
 
     pokerRenderer.render(state, isPlayerTurn, canCheck, canCall, canRaise, callAmount);
+
+    // Check if draw phase animation completed and start auto-advance timer
+    if (state.round === 'draw' && pokerRenderer.isDealAnimationComplete() && drawPhaseTimerId === null) {
+      drawPhaseTimerId = window.setTimeout(() => {
+        drawPhaseTimerId = null;
+        if (pokerGame) {
+          pokerGame.advancePhase();
+        }
+      }, 500); // 0.5 second gap before table cards
+    }
   }
   // Battle and positioning modes are handled by BattleArena
 }
@@ -142,6 +151,12 @@ function renderMenu(): void {
   (canvas as any).swordsmenButton = { x: swordBtnX, y: swordBtnY, width: testBtnWidth, height: testBtnHeight };
 }
 
+// Track card reveal for table_reveal phase
+let revealingCardIndex = 0;
+// Track auto-advance timers
+let drawPhaseTimerId: number | null = null;
+let battleStartTimerId: number | null = null;
+
 function handleStateChange(state: PokerGameState): void {
   // Check for game over
   if (state.gameOver) {
@@ -150,58 +165,74 @@ function handleStateChange(state: PokerGameState): void {
   }
 
   // Update game mode based on state
-  if (state.round === 'positioning') {
-    gameMode = 'positioning';
-  } else if (state.round === 'battle') {
+  if (state.round === 'battle') {
     gameMode = 'battle';
   } else {
     gameMode = 'poker';
     render();
   }
 
-  // Handle AI turn
-  if (state.activePlayer === 'opponent' &&
-      state.round !== 'showdown' &&
-      state.round !== 'positioning' &&
-      state.round !== 'battle' &&
-      state.round !== 'hand_complete' &&
-      !state.opponent.hasFolded &&
-      !state.opponent.isAllIn) {
-    setTimeout(() => executeAITurn(state), 1000);
+  // Handle phase-specific logic
+  if (state.round === 'table_reveal') {
+    startCardReveal();
   }
 }
 
-function executeAITurn(state: PokerGameState): void {
-  if (!pokerGame) return;
+// Auto-flip cards one by one during table_reveal
+function startCardReveal(): void {
+  if (!pokerRenderer || !pokerGame) return;
 
-  const decision = aiOpponent.decideAction(state);
+  revealingCardIndex = 0;
+  revealNextCard();
+}
 
-  switch (decision.action) {
-    case 'fold':
-      pokerGame.fold();
-      break;
-    case 'check':
-      pokerGame.check();
-      break;
-    case 'call':
-      pokerGame.call();
-      break;
-    case 'raise':
-      if (decision.raiseAmount) {
-        pokerGame.raise(decision.raiseAmount);
+function revealNextCard(): void {
+  if (!pokerRenderer || !pokerGame) return;
+
+  if (revealingCardIndex < 5) {
+    // Flip the next card
+    pokerRenderer.flipCardAt(revealingCardIndex);
+    SoundManager.playCardFlip();
+    revealingCardIndex++;
+
+    // Schedule next card flip
+    setTimeout(() => {
+      revealNextCard();
+    }, 600); // 600ms between each card (25% faster)
+  } else {
+    // All cards revealed, advance to bidding
+    setTimeout(() => {
+      if (pokerGame) {
+        pokerGame.setPhase('bidding');
       }
-      break;
-    case 'all_in':
-      pokerGame.allIn();
-      break;
+    }, 500);
   }
 }
 
 function enterPositioning(): void {
   if (!pokerGame) return;
 
+  stopPokerAnimationLoop();
   const state = pokerGame.getState();
   pokerGame.startPositioning();
+
+  // Get all 6 players' units (hole cards + kept cards for player)
+  const getPlayerUnits = (position: string) => {
+    const player = state.players.find(p => p.position === position);
+    if (!player) return [];
+    // Combine hole cards with kept cards
+    return [...player.holeCards, ...player.keptCards];
+  };
+
+  const getPlayerGodCards = (position: string) => {
+    const player = state.players.find(p => p.position === position);
+    return player ? player.godCards : [];
+  };
+
+  const getKeptModifiers = (position: string) => {
+    const player = state.players.find(p => p.position === position);
+    return player?.keptModifierCards || [];
+  };
 
   // Initialize battle arena for positioning
   battleArena = new BattleArena(canvas, (winner) => {
@@ -215,11 +246,25 @@ function enterPositioning(): void {
   });
 
   battleArena.setupBattle({
-    playerUnits: state.player.holeCards,
-    opponentUnits: state.opponent.holeCards,
+    playerUnits: getPlayerUnits('player'),
+    opponentUnits: getPlayerUnits('opponent'),
+    topRightUnits: getPlayerUnits('topRight'),
+    bottomRightUnits: getPlayerUnits('bottomRight'),
+    bottomLeftUnits: getPlayerUnits('bottomLeft'),
+    leftUnits: getPlayerUnits('topLeft'),
+    // Community cards apply to everyone
     modifiers: state.communityCards,
-    playerGodCards: state.player.godCards,
-    opponentGodCards: state.opponent.godCards
+    // Kept modifiers only apply to the team that owns them
+    teamModifiers: {
+      player: getKeptModifiers('player'),
+      opponent: getKeptModifiers('opponent'),
+      topLeft: getKeptModifiers('topLeft'),
+      topRight: getKeptModifiers('topRight'),
+      bottomLeft: getKeptModifiers('bottomLeft'),
+      bottomRight: getKeptModifiers('bottomRight')
+    },
+    playerGodCards: getPlayerGodCards('player'),
+    opponentGodCards: getPlayerGodCards('opponent')
   });
 
   // Enter positioning mode
@@ -279,7 +324,39 @@ function initGame(): void {
 
 function startGame(): void {
   gameMode = 'poker';
+  pokerRenderer?.resetCardFlips();
   pokerGame?.startNewHand();
+  SoundManager.playRoundStart();
+  // Start deal animation with sound callback
+  pokerRenderer?.startDealAnimation(() => {
+    SoundManager.playCardDraw();
+  });
+  startPokerAnimationLoop();
+}
+
+// Animation loop for poker card flips
+let pokerAnimationId: number | null = null;
+
+function startPokerAnimationLoop(): void {
+  if (pokerAnimationId !== null) return;
+
+  function loop(): void {
+    if (gameMode === 'poker') {
+      render();
+      pokerAnimationId = requestAnimationFrame(loop);
+    } else {
+      pokerAnimationId = null;
+    }
+  }
+
+  loop();
+}
+
+function stopPokerAnimationLoop(): void {
+  if (pokerAnimationId !== null) {
+    cancelAnimationFrame(pokerAnimationId);
+    pokerAnimationId = null;
+  }
 }
 
 // Test battle - skip poker and go straight to battle with 6 teams
@@ -439,6 +516,56 @@ canvas.addEventListener('click', (e) => {
   }
 
   if (gameMode === 'poker' && pokerRenderer && pokerGame) {
+    const state = pokerGame.getState();
+
+    // Handle bidding phase clicks
+    if (state.round === 'bidding') {
+      // Check button clicks FIRST (buttons may be over cards)
+      const action = pokerRenderer.handleClick(pos.x, pos.y);
+      if (action) {
+        handleAction(action);
+        return;
+      }
+
+      // Then check for card click to select for bidding
+      const cardIndex = pokerRenderer.getCommunityCardClickIndex(pos.x, pos.y);
+      if (cardIndex !== null) {
+        const player = state.players.find(p => p.position === 'player');
+        const currentBid = player?.bids[cardIndex] || 0;
+        pokerRenderer.selectCardForBidding(cardIndex, currentBid);
+        return;
+      }
+      return;
+    }
+
+    // Handle choose phase clicks
+    if (state.round === 'choose') {
+      const cardClick = pokerRenderer.handleHoleCardClick(pos.x, pos.y);
+      if (cardClick) {
+        if (cardClick.type === 'select_hole') {
+          if (!pokerGame.isKeeperSlotsFull('player')) {
+            pokerGame.keepCard('player', cardClick.index);
+            pokerRenderer.clearSelection();
+          }
+          return;
+        } else if (cardClick.type === 'select_keeper') {
+          const holeIndex = pokerRenderer.getSelectedHoleCardIndex();
+          if (holeIndex !== null) {
+            pokerGame.keepCard('player', holeIndex, cardClick.index);
+            pokerRenderer.clearSelection();
+          }
+          return;
+        }
+      }
+
+      const action = pokerRenderer.handleClick(pos.x, pos.y);
+      if (action) {
+        handleAction(action);
+      }
+      return;
+    }
+
+    // Handle other phases
     const action = pokerRenderer.handleClick(pos.x, pos.y);
     if (action) {
       handleAction(action);
@@ -523,9 +650,10 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 function handleAction(action: string): void {
-  if (!pokerGame) return;
+  if (!pokerGame || !pokerRenderer) return;
 
   switch (action) {
+    // Legacy actions
     case 'fold':
       pokerGame.fold();
       break;
@@ -536,9 +664,7 @@ function handleAction(action: string): void {
       pokerGame.call();
       break;
     case 'raise':
-      if (pokerRenderer) {
-        pokerGame.raise(pokerRenderer.getSliderValue());
-      }
+      pokerGame.raise(pokerRenderer.getSliderValue());
       break;
     case 'all_in':
       pokerGame.allIn();
@@ -546,10 +672,160 @@ function handleAction(action: string): void {
     case 'position':
       enterPositioning();
       break;
+
+    // New phase actions
+    case 'advance_phase':
+      pokerGame.advancePhase();
+      break;
+
+    // Bidding actions
+    case 'bid_increase':
+      pokerRenderer.incrementTempBid();
+      SoundManager.playButtonClick();
+      break;
+    case 'bid_decrease':
+      pokerRenderer.decrementTempBid();
+      SoundManager.playButtonClick();
+      break;
+    case 'bid_confirm': {
+      const cardIndex = pokerRenderer.getSelectedBidCardIndex();
+      const amount = pokerRenderer.getTempBidAmount();
+      if (cardIndex !== null) {
+        pokerGame.placeBid('player', cardIndex, amount);
+        SoundManager.playBidPlace();
+        pokerRenderer.deselectBidCard();
+      }
+      break;
+    }
+    case 'bid_remove': {
+      const removeIndex = pokerRenderer.getSelectedBidCardIndex();
+      if (removeIndex !== null) {
+        pokerGame.placeBid('player', removeIndex, 0);
+        pokerRenderer.deselectBidCard();
+      }
+      break;
+    }
+    case 'confirm_all_bids': {
+      // AI places their bids
+      pokerGame.placeAIBids();
+      // Reveal all bids and determine winners
+      const results = pokerGame.revealBidsAndAwardCards();
+      pokerRenderer.setBidResults(results);
+      // Play win sound for each card the player won
+      const playerWins = Object.values(results).filter(r => r.winner === 'player').length;
+      for (let i = 0; i < playerWins; i++) {
+        setTimeout(() => SoundManager.playBidWin(), i * 200);
+      }
+      pokerGame.setPhase('bid_reveal');
+      // Auto-start battle after 2 seconds
+      battleStartTimerId = window.setTimeout(() => {
+        battleStartTimerId = null;
+        startAutoBattle();
+      }, 2000);
+      break;
+    }
+
+    // start_battle is now auto-triggered after bid_reveal timer
+
     case 'next_hand':
+      // Clear any pending timers
+      if (drawPhaseTimerId !== null) {
+        clearTimeout(drawPhaseTimerId);
+        drawPhaseTimerId = null;
+      }
+      if (battleStartTimerId !== null) {
+        clearTimeout(battleStartTimerId);
+        battleStartTimerId = null;
+      }
+      // AI players keep their cards before moving to next hand
+      pokerGame.makeAIKeepCards();
+      pokerRenderer.resetCardFlips();
+      pokerRenderer.deselectBidCard();
+      pokerRenderer.clearSelection();
       pokerGame.startNewHand();
+      SoundManager.playRoundStart();
+      // Start deal animation with sound callback
+      pokerRenderer.startDealAnimation(() => {
+        SoundManager.playCardDraw();
+      });
+      startPokerAnimationLoop();
       break;
   }
+}
+
+// Auto-battle (skip positioning, auto-sim the fight)
+function startAutoBattle(): void {
+  if (!pokerGame) return;
+
+  stopPokerAnimationLoop();
+  const state = pokerGame.getState();
+
+  // Get all 6 players' units (hole cards + kept cards)
+  const getPlayerUnits = (position: string) => {
+    const player = state.players.find(p => p.position === position);
+    if (!player) return [];
+    return [...player.holeCards, ...player.keptCards];
+  };
+
+  const getPlayerGodCards = (position: string) => {
+    const player = state.players.find(p => p.position === position);
+    return player ? player.godCards : [];
+  };
+
+  const getKeptModifiers = (position: string) => {
+    const player = state.players.find(p => p.position === position);
+    const cards = player?.keptModifierCards || [];
+    if (cards.length > 0) {
+      console.log(`[startAutoBattle] ${position} has ${cards.length} kept modifier cards:`, cards.map(c => c.name));
+    }
+    return cards;
+  };
+
+  // Initialize battle arena
+  battleArena = new BattleArena(canvas, (_winner) => {
+    // Apply damage based on battle rankings
+    if (pokerGame && battleArena) {
+      const rankings = battleArena.getBattleRankings();
+      pokerGame.applyBattleDamage(rankings);
+    }
+    // Battle complete, go to choose phase
+    pokerGame?.setPhase('choose');
+    gameMode = 'poker';
+    startPokerAnimationLoop();
+  });
+
+  battleArena.setupBattle({
+    playerUnits: getPlayerUnits('player'),
+    opponentUnits: getPlayerUnits('opponent'),
+    topRightUnits: getPlayerUnits('topRight'),
+    bottomRightUnits: getPlayerUnits('bottomRight'),
+    bottomLeftUnits: getPlayerUnits('bottomLeft'),
+    leftUnits: getPlayerUnits('topLeft'),
+    // Community cards apply to everyone
+    modifiers: state.communityCards,
+    // Kept modifiers only apply to the team that owns them
+    teamModifiers: {
+      player: getKeptModifiers('player'),
+      opponent: getKeptModifiers('opponent'),
+      topLeft: getKeptModifiers('topLeft'),
+      topRight: getKeptModifiers('topRight'),
+      bottomLeft: getKeptModifiers('bottomLeft'),
+      bottomRight: getKeptModifiers('bottomRight')
+    },
+    playerGodCards: getPlayerGodCards('player'),
+    opponentGodCards: getPlayerGodCards('opponent')
+  });
+
+  // Skip positioning, go straight to battle
+  battleArena.startPositioning();
+  // Auto-start the battle after a brief delay
+  setTimeout(() => {
+    if (battleArena) {
+      pokerGame?.setPhase('battle');
+      battleArena.start();
+      gameMode = 'battle';
+    }
+  }, 500);
 }
 
 // Overlay button handlers
@@ -559,8 +835,11 @@ continueBtn.addEventListener('click', () => {
     if (pokerGame.isGameOver()) {
       showGameOver(pokerGame.getState().winner!);
     } else {
+      // Return to poker view (hand_complete) to allow keeping a card
+      // Don't start new hand yet - let player keep a card first
       gameMode = 'poker';
-      pokerGame.startNewHand();
+      startPokerAnimationLoop();
+      render();
     }
   }
 });
@@ -568,6 +847,7 @@ continueBtn.addEventListener('click', () => {
 playAgainBtn.addEventListener('click', () => {
   gameOverDisplay.classList.add('hidden');
   initGame();
+  pokerRenderer?.resetCardFlips();
   startGame();
 });
 

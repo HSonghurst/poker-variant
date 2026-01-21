@@ -12,10 +12,10 @@ export class Knight extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 225;
-    this.maxHealth = 225;
-    this.baseSpeed = 0.268;
-    this.speed = 0.268;
+    this.health = 144;
+    this.maxHealth = 144;
+    this.baseSpeed = 0.3752;
+    this.speed = 0.3752;
     this.baseDamage = 15;
     this.damage = 15;
     this.baseAttackRange = 12;

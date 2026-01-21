@@ -11,10 +11,10 @@ export class Archer extends Fighter {
 
   constructor(team: Team, x: number, canvasHeight: number) {
     super(team, x, canvasHeight);
-    this.health = 160;
-    this.maxHealth = 160;
-    this.baseSpeed = 0.191;
-    this.speed = 0.191;
+    this.health = 102;
+    this.maxHealth = 102;
+    this.baseSpeed = 0.2674;
+    this.speed = 0.2674;
     this.baseDamage = 22;
     this.damage = 22;
     this.baseAttackRange = 65;
@@ -38,6 +38,7 @@ export class Archer extends Fighter {
 
       // Check for piercing ability (every 5 attacks)
       if (this.modifiers?.archerFanAbility && this.attackCount % 5 === 0 && allEnemies) {
+        console.log(`[Archer] Firing piercing arrow! Attack #${this.attackCount}`);
         this.firePiercingArrow(target, allEnemies);
       } else {
         this.arrows.push(new Arrow(this.x, this.y, target, this.damage, this.team, this));
